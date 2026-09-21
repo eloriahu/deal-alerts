@@ -1,0 +1,77 @@
+settings:
+  alert_discount: 70
+  dashboard_discount: 40
+  heat_window_minutes: 180
+  seen_days: 30
+  dashboard_days: 7
+  failure_note_after: 5
+  same_host_gap_seconds: 3
+  max_alerts_per_run: 15
+  stale_alert_hours: 6
+  max_consecutive_send_failures: 3
+  fetch_budget_seconds: 300
+  max_alert_age_hours: 24
+
+glitch_words:
+  en: ["price error", "pricing error", "price glitch", "pricing glitch", "misprice", "mispriced",
+       "price mistake", "pricing mistake", "error fare", "mistake fare"]
+  de: ["preisfehler"]
+  fr: ["erreur de prix"]
+  zh: ["錯價", "出錯價", "標錯價", "價錢錯誤"]
+  ja: ["価格ミス", "価格エラー", "価格誤表記", "価格バグ", "価格設定ミス"]
+
+sale_words:
+  en: ["sale", "deal", "discount", "% off", "price drop"]
+  ja: ["セール", "特価", "割引", "半額", "値下げ", "タイムセール"]
+
+ignore_words:
+  en: ["new customers", "first month", "second item", "2nd item"]
+  de: ["neukunden", "lotto"]
+
+expired_words: ["expired", "abgelaufen", "expiré", "ausverkauft", "sold out",
+                "終了しました", "已完結", "已結束"]
+
+sources:
+  # Singapore
+  - {name: SingPromos, region: sg, kind: feed, language: en,
+     url: "https://www.singpromos.com/feed/"}
+  - {name: MoneyDigest, region: sg, kind: feed, language: en,
+     url: "https://www.moneydigest.sg/feed/"}
+  - {name: MileLion, region: sg, kind: feed, language: en, require_sale_word: true,
+     url: "https://milelion.com/feed/"}
+  - {name: r/singaporedeals, region: sg, kind: feed, language: en,
+     url: "https://www.reddit.com/r/singaporedeals/new/.rss"}
+  # Hong Kong
+  - {name: Jetso Club, region: hk, kind: feed, language: zh,
+     url: "https://www.jetsoclub.com/feeds/posts/default"}
+  - {name: Jetso Today, region: hk, kind: feed, language: zh,
+     url: "https://www.jetsotoday.com/feed"}
+  - {name: GoTrip, region: hk, kind: feed, language: zh,
+     url: "https://www.gotrip.hk/feed"}
+  # Japan
+  - {name: Gekiyasu, region: jp, kind: feed, language: ja,
+     url: "https://gekiyasu-gekiyasu.doorblog.jp/index.rdf"}
+  - {name: Traicy, region: jp, kind: feed, language: ja, require_sale_word: true,
+     url: "https://www.traicy.com/feed"}
+  - {name: PC Watch, region: jp, kind: feed, language: ja, require_sale_word: true,
+     url: "https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf"}
+  # US
+  - {name: Slickdeals Frontpage, region: us, kind: feed, language: en, heat_threshold: 60,
+     url: "https://slickdeals.net/newsearch.php?mode=frontpage&searcharea=deals&searchin=first&rss=1"}
+  - {name: Slickdeals Popular, region: us, kind: feed, language: en, heat_threshold: 60,
+     url: "https://slickdeals.net/newsearch.php?mode=popdeals&searcharea=deals&searchin=first&rss=1"}
+  - {name: r/deals, region: us, kind: feed, language: en,
+     url: "https://www.reddit.com/r/deals/new/.rss"}
+  - {name: r/buildapcsales, region: us, kind: feed, language: en,
+     url: "https://www.reddit.com/r/buildapcsales/new/.rss"}
+  - {name: The Flight Deal, region: us, kind: feed, language: en,
+     url: "https://www.theflightdeal.com/feed/"}
+  # Europe
+  - {name: DealDoktor, region: eu, kind: feed, language: de,
+     url: "https://www.dealdoktor.de/feed/"}
+  - {name: Mein-Deal, region: eu, kind: feed, language: de,
+     url: "https://www.mein-deal.com/feed/"}
+  - {name: Travel-Dealz, region: eu, kind: feed, language: en,
+     url: "https://travel-dealz.eu/feed/"}
+  - {name: r/UKDeals, region: eu, kind: feed, language: en,
+     url: "https://www.reddit.com/r/UKDeals/new/.rss"}

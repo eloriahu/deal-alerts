@@ -1,0 +1,18 @@
+[project]
+name = "deal-alerts"
+version = "0.1.0"
+description = "Free online alerts for price errors and very deep discounts"
+requires-python = ">=3.12"
+dependencies = [
+    "feedparser>=6.0.11",
+    "requests>=2.32",
+    "PyYAML>=6.0",
+    "beautifulsoup4>=4.12",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,0 +1,73 @@
+name: scan
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      test_message:
+        description: "Only send a test message to every Telegram chat"
+        type: boolean
+        default: false
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: scan
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --no-dev
+      # The secrets are given only to the two steps that run run.py, so no
+      # third-party action in this job can ever see the bot key or a chat id.
+      - name: Send test messages only
+        if: ${{ inputs.test_message }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_SG: ${{ secrets.TG_CHAT_SG }}
+          TG_CHAT_HK: ${{ secrets.TG_CHAT_HK }}
+          TG_CHAT_JP: ${{ secrets.TG_CHAT_JP }}
+          TG_CHAT_US: ${{ secrets.TG_CHAT_US }}
+          TG_CHAT_EU: ${{ secrets.TG_CHAT_EU }}
+          TG_CHAT_TEST: ${{ secrets.TG_CHAT_TEST }}
+        run: uv run --no-dev python run.py --test-message
+      - name: Scan
+        if: ${{ !inputs.test_message }}
+        timeout-minutes: 7
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_SG: ${{ secrets.TG_CHAT_SG }}
+          TG_CHAT_HK: ${{ secrets.TG_CHAT_HK }}
+          TG_CHAT_JP: ${{ secrets.TG_CHAT_JP }}
+          TG_CHAT_US: ${{ secrets.TG_CHAT_US }}
+          TG_CHAT_EU: ${{ secrets.TG_CHAT_EU }}
+          TG_CHAT_TEST: ${{ secrets.TG_CHAT_TEST }}
+        run: uv run --no-dev python run.py
+      # always(): even a scan that failed part way may already have sent alerts,
+      # and those are only recorded in the state file.
+      - name: Save state
+        if: ${{ always() && !inputs.test_message }}
+        run: |
+          git config user.name "deal-alerts-bot"
+          git config user.email "deal-alerts-bot@users.noreply.github.com"
+          git add data/state.json
+          git diff --cached --quiet || git commit -m "chore: update state"
+          for attempt in 1 2 3; do git push && break; git pull --rebase; sleep 5; done
+          test -z "$(git log @{u}.. --oneline)"
+      - name: Package the page
+        if: ${{ !inputs.test_message }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - name: Publish the page
+        if: ${{ !inputs.test_message }}
+        id: deploy
+        uses: actions/deploy-pages@v4
