@@ -10,7 +10,7 @@ from typing import Any, List, Optional
 
 import pytest
 
-from dealalerts.models import RawPost, Source
+from dealalerts.models import Deal, RawPost, Source, Verdict
 from dealalerts.pipeline import run_once
 import dealalerts.pipeline as pipeline_module
 from dealalerts.store import State
@@ -255,17 +255,41 @@ def test_the_run_honours_the_translation_budget() -> None:
     assert len(asked.urls) == 1
 
 
-def test_one_translation_failure_stops_the_rest_of_the_run_but_not_the_alerts() -> None:
+def test_one_translation_failure_does_not_stop_the_run() -> None:
+    """The service returns the odd gateway error while perfectly well, and giving
+    up the whole run for one of those costs every later headline for nothing."""
     state, client = State(), FakeClient()
-    asked = FakeTranslateClient([FetchError("api.test: HTTP 500"), english("Never asked for")])
+    asked = FakeTranslateClient([
+        FetchError("api.test: HTTP 504"), english("Second title"), english("First title"),
+    ])
     translator = Translator(asked, None, max_attempts=10)
     warm_up(state, client, translator)
     posts = [post(20, "Amazonで価格ミス 1"), post(21, "Amazonで価格ミス 2")]
     translating_run(state, client, {"SG Feed": [], "JP Feed": posts}, translator)
 
-    assert [deal["title_en"] for deal in state.deals_for("jp")] == [None, None]
-    assert len(asked.urls) == 1
+    # The second headline is translated as usual, and the fill-in pass picks the
+    # first one up again before anything is sent, so the hiccup costs nothing.
+    assert sorted(deal["title_en"] or "" for deal in state.deals_for("jp")) == \
+        ["First title", "Second title"]
+    assert len(asked.urls) == 3
     assert len(client.sent) == 2
+
+
+def test_two_translation_failures_stop_the_rest_of_the_run_but_not_the_alerts() -> None:
+    state, client = State(), FakeClient()
+    asked = FakeTranslateClient([
+        FetchError("api.test: HTTP 500"), FetchError("api.test: HTTP 500"),
+        english("Never asked for"),
+    ])
+    translator = Translator(asked, None, max_attempts=10)
+    warm_up(state, client, translator)
+    posts = [post(20, "Amazonで価格ミス 1"), post(21, "Amazonで価格ミス 2"),
+             post(22, "Amazonで価格ミス 3")]
+    translating_run(state, client, {"SG Feed": [], "JP Feed": posts}, translator)
+
+    assert [deal["title_en"] for deal in state.deals_for("jp")] == [None, None, None]
+    assert len(asked.urls) == 2
+    assert len(client.sent) == 3
 
 
 def test_a_translator_that_explodes_costs_only_the_english_headline(
@@ -289,3 +313,87 @@ def test_a_translator_that_explodes_costs_only_the_english_headline(
     assert "RuntimeError" in log_text
     assert "SECRET123" not in log_text
     assert "SECRET123" not in repr(state.deals)
+
+
+# ---------------------------------------------------------------------------
+# Filling in titles that an earlier run could not translate. Without this, a
+# deal stored while the service was down keeps its original title for the whole
+# week it is on the page.
+# ---------------------------------------------------------------------------
+
+
+def stored_jp(state: State, count: int, translated: int = 0) -> None:
+    """Put `count` Japanese deals in the state, the first `translated` of them done."""
+    for index in range(count):
+        deal = Deal(
+            id=f"jp-{index}", region="jp", source="JP Feed", title=f"価格ミス {index}",
+            link=f"https://shop.test/{index}", shop=None, price_now=None, usual_price=None,
+            currency=None, discount_pct=None, heat=None, posted_at=None,
+            first_seen=(NOW - timedelta(minutes=index)).isoformat(),
+            title_en=f"Done {index}" if index < translated else None,
+        )
+        state.add_deal(deal, Verdict("dashboard", "discount", ("50% off",)))
+
+
+def test_a_later_run_fills_in_up_to_five_missing_english_titles() -> None:
+    state, client, translator = State(), FakeClient(), FakeTranslator()
+    stored_jp(state, 8)
+    translating_run(state, client, {"SG Feed": [], "JP Feed": []}, translator)
+
+    filled = [deal for deal in state.deals if deal["title_en"]]
+    assert len(filled) == 5
+    assert len(translator.asked) == 5
+    # Newest first: the first five by first_seen, which is index 0 to 4.
+    assert sorted(deal["id"] for deal in filled) == [f"jp-{index}" for index in range(5)]
+
+
+def test_the_later_pass_skips_english_records_and_ones_already_done() -> None:
+    state, client, translator = State(), FakeClient(), FakeTranslator()
+    stored_jp(state, 3, translated=2)
+    state.add_deal(
+        Deal(id="sg-1", region="sg", source="SG Feed", title="Plain English deal",
+             link="https://shop.test/sg", shop=None, price_now=None, usual_price=None,
+             currency=None, discount_pct=None, heat=None, posted_at=None,
+             first_seen=NOW.isoformat()),
+        Verdict("dashboard", "discount", ("50% off",)),
+    )
+    translating_run(state, client, {"SG Feed": [], "JP Feed": []}, translator)
+
+    assert translator.asked == [("価格ミス 2", "ja")]
+    assert [deal["title_en"] for deal in state.deals if deal["id"] == "sg-1"] == [None]
+
+
+def test_the_later_pass_shares_the_one_per_run_budget() -> None:
+    state, client = State(), FakeClient()
+    asked = FakeTranslateClient([english("One"), english("Two")])
+    translator = Translator(asked, None, max_attempts=1)
+    stored_jp(state, 4)
+    translating_run(state, client, {"SG Feed": [], "JP Feed": []}, translator)
+
+    assert len(asked.urls) == 1
+    assert len([deal for deal in state.deals if deal["title_en"]]) == 1
+
+
+def test_a_translator_that_explodes_in_the_later_pass_does_not_stop_the_run(
+    caplog: pytest.LogCaptureFixture
+) -> None:
+    class Exploding:
+        def english_title(self, text: str, language: str) -> Optional[str]:
+            raise RuntimeError("https://api.test/get?de=SECRET123 blew up")
+
+    state, client = State(), FakeClient()
+    stored_jp(state, 2)
+    with caplog.at_level(logging.WARNING):
+        report = translating_run(state, client, {"SG Feed": [], "JP Feed": []}, Exploding())
+
+    assert report.failures == ()
+    assert all(deal["title_en"] is None for deal in state.deals)
+    log_text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "RuntimeError" in log_text and "SECRET123" not in log_text
+
+
+def test_no_translator_means_no_later_pass() -> None:
+    state, client = State(), FakeClient()
+    stored_jp(state, 3)
+    translating_run(state, client, {"SG Feed": [], "JP Feed": []}, None)
+    assert all(deal["title_en"] is None for deal in state.deals)

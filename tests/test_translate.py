@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from dealalerts.http import FetchError
-from dealalerts.translate import ENDPOINT, Translator, translate_title
+from dealalerts.translate import BYTE_LIMIT, ENDPOINT, Translator, translate_title
 
 EMAIL = "owner@example.test"
 QUOTA = "MYMEMORY WARNING: YOU USED ALL AVAILABLE FREE TRANSLATIONS FOR TODAY"
@@ -140,7 +140,8 @@ def test_the_translator_stops_asking_once_its_budget_is_used() -> None:
     assert len(client.urls) == 2
 
 
-def test_the_translator_gives_up_for_the_whole_run_after_one_failure() -> None:
+def test_a_spent_allowance_gives_up_for_the_whole_run_at_once() -> None:
+    """There is no point asking 39 more times once the day's allowance is gone."""
     client = FakeClient([ok(QUOTA, status=403), ok("Never asked for")])
     translator = Translator(client, None, max_attempts=10)
     assert translator.english_title("セール", "ja") is None
@@ -186,3 +187,103 @@ def test_the_translator_never_raises_whatever_the_client_does() -> None:
     client = FakeClient(error=RuntimeError("https://api.test/get?de=SECRET123 blew up"))
     translator = Translator(client, EMAIL, max_attempts=3)
     assert translator.english_title("セール", "ja") is None
+
+
+# ---------------------------------------------------------------------------
+# One hiccup is not an outage. MyMemory returns the odd 504, and giving up on
+# the whole run for one of those costs every later title for nothing.
+# ---------------------------------------------------------------------------
+
+
+class ScriptedClient(FakeClient):
+    """A client that works through a script of replies and exceptions."""
+
+    def get_json(self, url: str) -> Dict[str, Any]:
+        self.urls.append(url)
+        reply = self.replies.pop(0) if self.replies else ok("English")
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+GATEWAY = FetchError("api.mymemory.translated.net: HTTP 504")
+
+
+def test_one_failure_then_a_success_keeps_the_run_translating() -> None:
+    client = ScriptedClient([GATEWAY, ok("Second title")])
+    translator = Translator(client, None, max_attempts=10)
+    assert translator.english_title("セール", "ja") is None
+    assert translator.english_title("特価", "ja") == "Second title"
+    assert len(client.urls) == 2
+
+
+def test_two_failures_in_a_row_stop_the_run() -> None:
+    client = ScriptedClient([GATEWAY, GATEWAY, ok("Never asked for")])
+    translator = Translator(client, None, max_attempts=10)
+    assert translator.english_title("セール", "ja") is None
+    assert translator.english_title("特価", "ja") is None
+    assert translator.english_title("値下げ", "ja") is None
+    assert len(client.urls) == 2
+
+
+def test_a_success_clears_the_failure_count() -> None:
+    """Two failures with a good one between them is a wobbly service, not a dead one."""
+    client = ScriptedClient([GATEWAY, ok("Good"), GATEWAY, ok("Still going")])
+    translator = Translator(client, None, max_attempts=10)
+    assert translator.english_title("a", "ja") is None
+    assert translator.english_title("b", "ja") == "Good"
+    assert translator.english_title("c", "ja") is None
+    assert translator.english_title("d", "ja") == "Still going"
+    assert len(client.urls) == 4
+
+
+def test_an_unusable_answer_never_stops_the_run() -> None:
+    """A refused or empty answer is about that one title, not about the service."""
+    client = ScriptedClient([
+        {"responseStatus": 413, "responseData": {"translatedText": "too long"}},
+        {"responseStatus": 200, "responseData": {"translatedText": ""}},
+        ok("Third title"),
+    ])
+    translator = Translator(client, None, max_attempts=10)
+    assert translator.english_title("a", "ja") is None
+    assert translator.english_title("b", "ja") is None
+    assert translator.english_title("c", "ja") == "Third title"
+    assert len(client.urls) == 3
+
+
+def test_the_log_line_still_appears_once_and_names_the_first_reason(
+    caplog: pytest.LogCaptureFixture
+) -> None:
+    client = ScriptedClient([GATEWAY, GATEWAY, GATEWAY])
+    translator = Translator(client, EMAIL, max_attempts=10)
+    with caplog.at_level(logging.INFO):
+        for text in ("a", "b", "c"):
+            translator.english_title(text, "ja")
+    messages = [record.getMessage() for record in caplog.records]
+    assert len(messages) == 1
+    assert "translation unavailable" in messages[0]
+    assert "FetchError" in messages[0]
+    assert EMAIL not in messages[0] and "https://" not in messages[0]
+
+
+# ---------------------------------------------------------------------------
+# The cut is measured in bytes, because MyMemory's limit is.
+# ---------------------------------------------------------------------------
+
+
+def test_the_text_sent_is_never_more_than_450_bytes() -> None:
+    """One emoji is four bytes, so 140 of them overflow a limit counted in characters."""
+    client = FakeClient([ok("English")])
+    assert translate_title(client, "🎧" * 140, "ja") == "English"
+    sent = query_of(client.urls[0])["q"][0]
+    assert len(sent.encode("utf-8")) <= 450
+    assert "\ufffd" not in sent  # no half a character left at the end
+
+
+def test_a_cut_never_splits_a_character() -> None:
+    for text in ("あ" * 400, "🎧" * 140, "a" * 900, "Ä" * 300):
+        client = FakeClient([ok("English")])
+        translate_title(client, text, "ja")
+        sent = query_of(client.urls[0])["q"][0]
+        assert len(sent.encode("utf-8")) <= 450, text[:4]
+        assert sent == sent.encode("utf-8").decode("utf-8"), text[:4]

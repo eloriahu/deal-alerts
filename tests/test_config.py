@@ -261,3 +261,9 @@ def test_the_shipped_file_lists_the_online_only_regions_and_in_store_words() -> 
     assert "dine-in" in config.in_store_words
     assert "堂食" in config.in_store_words
     assert "filiale" in config.in_store_words
+
+
+def test_the_shipped_file_sets_both_translation_limits() -> None:
+    config = load_config(ROOT / "sources.yaml")
+    assert config.settings.max_translations_per_run == 40
+    assert config.settings.retranslate_per_run == 5

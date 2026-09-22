@@ -43,6 +43,9 @@ class Settings:
     # How many headlines one run may send for translation. The free allowance is
     # a few thousand characters a day, shared by every run.
     max_translations_per_run: int = 40
+    # How many deals already on the page may have a second try at an English
+    # headline each run, for the ones stored while the service was unreachable.
+    retranslate_per_run: int = 5
     # Regions where a deal that can only be taken in a shop or a restaurant is
     # no use, so it is dropped. Singapore is left out: that is where she is.
     online_only_regions: Tuple[str, ...] = ()

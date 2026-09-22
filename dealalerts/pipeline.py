@@ -92,6 +92,44 @@ def _translated(deal: Deal, source: Source, translator: Optional[Translator]) ->
     return deal if english is None else replace(deal, title_en=english)
 
 
+def _fill_missing_titles(state: State, config: Config, translator: Optional[Translator],
+                         limit: int) -> None:
+    """Give stored deals that still have no English headline another try. Never raises.
+
+    A deal stored while the translation service was unreachable would otherwise
+    keep its original headline for the whole week it is shown. Newest first, and
+    never more than ``limit`` of them, so a long backlog cannot eat a run. These
+    asks share the translator's own per-run budget, so the total is unchanged.
+    """
+    if translator is None or limit <= 0:
+        return
+    languages = {source.name: source.language for source in config.sources}
+    waiting = [
+        record for record in state.deals
+        if not record.get("title_en")
+        and isinstance(record.get("title"), str)
+        and languages.get(record.get("source"), "en") != "en"
+    ]
+    # A stored record can be hand-edited, so sort on text rather than trusting
+    # every first_seen to be comparable with every other.
+    waiting.sort(key=lambda record: str(record.get("first_seen") or ""), reverse=True)
+    for record in waiting[:limit]:
+        english: Optional[str] = None
+        failure: Optional[str] = None
+        try:
+            english = translator.english_title(record["title"], languages[record["source"]])
+        except Exception as error:  # noqa: BLE001 - deliberate: see docstring
+            # Only the class name, for the same reason as _translated above.
+            failure = type(error).__name__
+        if failure is not None:
+            logger.warning(
+                "Missing titles could not be translated (%s); the originals are kept", failure
+            )
+            return
+        if english:
+            record["title_en"] = english
+
+
 def _deliver(client: PoliteClient, env: Mapping[str, str], region: str, text: str,
              dry_run: bool) -> str:
     """Send one message. Returns _SENT, _FAILED or _SKIPPED.
@@ -282,6 +320,11 @@ def run_once(
             state.add_deal(deal, verdict)
             if backlog and verdict.tier == "alert":
                 state.mark_alerted(deal.id, now)
+
+    # Deals stored while the service was unreachable get another try here, before
+    # anything is sent, so a filled-in headline reaches the message as well as
+    # the page. It shares the run's translation budget.
+    _fill_missing_titles(state, config, translator, settings.retranslate_per_run)
 
     _save_progress(checkpoint)
 
