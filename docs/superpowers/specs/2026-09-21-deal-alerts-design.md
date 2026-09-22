@@ -18,7 +18,7 @@ at zero cost, with no dependence on any PC being on.
 | Phone alerts | Telegram. One bot, five channels: SG Deals, HK Deals, Japan Deals, US Deals, Europe Deals. Each can be muted on its own. |
 | Strictness | Two tiers. Phone alert for suspected glitches and discounts of 70% or more. Dashboard only for 40 to 70% off. |
 | Categories | Everything. No category filter. |
-| Hosting | GitHub: scheduled run every 15 minutes, dashboard on GitHub Pages, public repository `github.com/eloriahu/deal-alerts`. |
+| Hosting | GitHub: scheduled run every 5 minutes, dashboard on GitHub Pages, public repository `github.com/eloriahu/deal-alerts`. |
 | Cost | Zero. No paid service, no credit card. |
 
 ## How it finds deals
@@ -31,21 +31,22 @@ The list that ships is in `sources.yaml`, and that file is the only source of
 truth. Each entry carries its region; region is fixed at the source and never
 guessed from the text. As shipped:
 
-- Singapore: SingPromos, MoneyDigest, MileLion, r/singaporedeals.
-- Hong Kong: Jetso Club, Jetso Today, GoTrip (Hong Kong's main deal sites;
-  "jetso" is the local word for a bargain). Posts are in Traditional Chinese.
+- Singapore: SingPromos, MoneyDigest, MileLion.
+- Hong Kong: Jetso Club, GoTrip, FlyAgain (Hong Kong's main deal sites; "jetso"
+  is the local word for a bargain). Posts are in Traditional Chinese.
 - Japan: the Gekiyasu deal blog, Traicy for airline fare sales, PC Watch.
   Posts are in Japanese.
-- US: the Slickdeals front page and popular feeds, r/deals, r/buildapcsales,
-  The Flight Deal.
+- US: the Slickdeals front page and popular feeds, The Flight Deal.
 - Europe: DealDoktor and Mein-Deal (Germany), Travel-Dealz for error fares,
-  r/UKDeals.
+  HotUKDeals, mydealz, Dealabs.
 
 Everything else named during design stays a candidate, tested from GitHub's
 servers before it is added: public deal Telegram channels through their web
-preview pages, ITmedia, Secret Flying, r/HongKong, Japanese deal subreddits,
-and HotUKDeals, mydealz and Dealabs, which all refuse automated readers today.
-A source that blocks GitHub's addresses is replaced, not left failing quietly.
+preview pages, ITmedia, Secret Flying, r/HongKong and Japanese deal subreddits.
+Reddit feeds are out: Reddit rate-limits GitHub's addresses, so a Reddit source
+fails far more often than it works. HotUKDeals, mydealz and Dealabs refuse a
+home PC but answer GitHub's servers, which is why they ship. A source that
+blocks GitHub's addresses is replaced, not left failing quietly.
 
 ## Parts
 
@@ -54,21 +55,30 @@ Each part has one job and can be tested on its own.
 | Part | Job | Input | Output |
 |---|---|---|---|
 | `sources.yaml` | List of sources with name, region, kind, address | none | config |
-| `fetchers/` | One reader per source kind (feed, Reddit, Telegram preview). Fetch and turn posts into a common `Deal` record | source entry | list of `Deal` |
+| `fetchers/` | One reader per source kind (feed, Telegram preview). Fetch and turn posts into a common `Deal` record | source entry | list of `Deal` |
 | `parse.py` | Pull current price, usual price, discount %, shop name out of a post title and body | text | fields on `Deal` |
 | `score.py` | Decide the tier: `alert`, `dashboard`, or `ignore`, with the reasons | `Deal` | tier + reasons |
 | `store.py` | Remember which deals were seen and alerted, and source health. One file, `data/state.json`, committed back by the run | deals | state |
 | `notify.py` | Send one Telegram message per new `alert` deal to that region's channel | deal + tier | message sent |
 | `site.py` | Build the static dashboard page into `public/` (published by the run; not the `docs/` folder, which holds this spec) | state | `index.html` |
 | `run.py` | Run the parts in order; one source failing never stops the rest | none | exit code |
-| `.github/workflows/scan.yml` | Timer (every 15 minutes), runs `run.py`, commits `data/state.json`, publishes `public/` to GitHub Pages | none | none |
+| `translate.py` | Ask MyMemory for an English headline. Display only: never touches scoring | title + source language | English title or nothing |
+| `.github/workflows/scan.yml` | Timer (every 5 minutes), runs `run.py`, commits `data/state.json`, publishes `public/` to GitHub Pages | none | none |
 
 `Deal` record: id (`<region>-<hash of the cleaned link>`), region, source,
-title, link, shop, price now, usual price, discount %, votes or heat if the
-source gives it, posted time, first seen time. The id carries the region, so
+title, English title if one was obtained, link, shop, price now, usual price,
+discount %, votes or heat if the source gives it, posted time, first seen time. The id carries the region, so
 the same link in two regions is two separate deals.
 
 ## Scoring rules
+
+First, before anything else: in the regions listed under `online_only_regions`
+(Hong Kong, Japan, the US and Europe as shipped) a post whose title or summary
+carries one of the `in_store_words` is dropped outright. Those are regions the
+owner can only buy from at a distance, so a bargain that can only be taken on a
+shop floor or in a dining room is noise there. This overrides every rule below,
+including the price-error words and the vote count: a price error at a till is
+still a till. Singapore is deliberately not in the list.
 
 Phone alert (tier `alert`) when any of these is true:
 
@@ -109,8 +119,15 @@ marked expired by the source are skipped.
 Chinese and Japanese posts: prices and discounts are read with patterns for
 those scripts ("HK$", "港幣", "円", "￥", "半額" meaning half price, "7割引"
 meaning 70% off, "3折" meaning 70% off in Hong Kong usage, where the number is
-the share you pay). Titles are shown in the original language in this version;
-the price, discount and shop lines of the alert are always in English.
+the share you pay). Titles are shown in English with the original underneath,
+translated by MyMemory (free, no sign-up) from the source's declared language;
+the price, discount and shop lines of the alert are always in English. The
+translation is display only and never reaches scoring, so a translation that is
+wrong, late or missing cannot change what alerts. If translation fails twice in
+a row, or the daily allowance is used up, no further titles are translated for
+the rest of that run; later runs fill in missing English titles for deals still
+on the page. One run asks at most `max_translations_per_run` times in total,
+including those fill-ins, of which at most `retranslate_per_run` are retries.
 
 Each deal alerts once. It is remembered by its region-scoped id for 30 days
 after it was last seen, so a post that sits in a feed for months never alerts
@@ -131,7 +148,11 @@ Source: SingPromos, posted 6 min ago
 
 The bot key and the five channel ids are kept in GitHub's encrypted secrets
 (`TELEGRAM_BOT_TOKEN`, `TG_CHAT_SG`, `TG_CHAT_HK`, `TG_CHAT_JP`, `TG_CHAT_US`, `TG_CHAT_EU`). They never
-appear in the repository, the logs, or the dashboard.
+appear in the repository, the logs, or the dashboard. One further optional
+secret, `MYMEMORY_EMAIL`, holds any email address and raises MyMemory's free
+daily allowance from 5,000 to 50,000 characters; it is treated exactly like the
+others and never leaves the encrypted store. Without it the anonymous allowance
+applies and everything still works.
 
 ## Dashboard
 
@@ -139,7 +160,8 @@ One static page at `https://eloriahu.github.io/deal-alerts/`.
 
 - Five tabs: Singapore, Hong Kong, Japan, US, Europe. The chosen tab is remembered.
 - Suspected glitches pinned at the top of each tab, then other deals, newest first.
-- Each row: product, price now, usual price, discount, shop, source, age, link.
+- Each row: product (in English, with the original headline underneath), price
+  now, usual price, discount, shop, source, age, link.
 - Header shows when the last check ran.
 - A health line per source: last success time, and a red mark after failures.
 - Readable on a phone. Shows the last 7 days.

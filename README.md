@@ -4,8 +4,11 @@ This is a small free tool that watches public bargain websites for Singapore,
 Hong Kong, Japan, the US and Europe, and messages your phone when something
 looks like a mistake or a very deep cut.
 
-It checks every 15 minutes. GitHub (the website that stores this project) runs
+It checks every 5 minutes. GitHub (the website that stores this project) runs
 it, so no computer of yours has to be switched on, and it costs nothing.
+GitHub's timer is loose: a check can turn up a few minutes late, and sometimes
+one is skipped when GitHub is busy. Nothing is lost when that happens; the next
+check picks up whatever was posted in the meantime.
 
 Everything it finds is also listed on a web page:
 https://eloriahu.github.io/deal-alerts/
@@ -48,6 +51,51 @@ dropped.
 
 Each deal buzzes once, and only once, even if several sites post it.
 
+## Only online deals outside Singapore
+
+Outside Singapore you cannot walk into the shop, so a bargain you could only
+take at a till is no use to you. In **Hong Kong, Japan, the US and Europe** the
+tool therefore throws away any post whose headline or description says you have
+to be standing in the shop: "in-store", "dine-in", 堂食, 店舗, "Filiale",
+"en magasin" and so on.
+
+This beats every other rule. Even a post that says "price error", and even one
+with 90% off, is dropped if it also says "in-store only".
+
+**Singapore is never filtered this way.** That is where you are, so a shop deal
+there still reaches you.
+
+English, German and French words only count as whole words, so "in store" does
+not fire on "Skin Store" and "dine-in" does not fire on a longer word that
+happens to contain it. Chinese and Japanese are written without spaces between
+words, so those are found anywhere in the text.
+
+The words live in `sources.yaml` under `in_store_words`, grouped by language.
+This is the whole English line as it ships:
+
+```yaml
+  en: ["in-store", "in store", "instore", "store only", "in-branch", "at the counter",
+       "dine-in", "dine in"]
+```
+
+To add one of your own, put it at the end of that line and keep all the others.
+To stop dropping a kind of post, delete just that one phrase. Keep the quotation
+marks and the commas exactly as they are.
+
+Choose phrases that can only mean a shop floor. Single broad words such as
+"restaurant", "buffet" or "showroom" were tried and removed: they threw away
+ordinary online bargains on kitchenware and shower screens.
+
+The regions this applies to are listed near the top of the same file:
+
+```yaml
+  online_only_regions: [hk, jp, us, eu]
+```
+
+Remove a region from that line and it stops being filtered. Add `sg` and
+Singapore starts being filtered too. Only `sg`, `hk`, `jp`, `us` and `eu` are
+allowed there; anything else stops the tool and sends you a message saying so.
+
 ## The web page
 
 Five tabs, one per region. Suspected price mistakes sit at the top. The page
@@ -63,6 +111,46 @@ At the bottom of each tab is one line per source with a coloured dot:
 
 One red dot is normal and not urgent; websites go down and come back. All of
 them red at once usually means the tool itself is stuck.
+
+## English titles
+
+Posts from Hong Kong, Japan, Germany and France arrive in Chinese, Japanese,
+German and French. The tool sends each headline to **MyMemory**, a free
+translation service that needs no sign-up and no payment card, and shows you
+the English version first. The original headline is always kept directly
+underneath, in smaller letters on the web page and in italics in the Telegram
+message, so nothing is lost when a translation comes out clumsy.
+
+Only the headline is translated, and only for show. What counts as a bargain is
+still decided on the original words, so a bad translation can never cost you an
+alert or invent one.
+
+If MyMemory is down or too busy, you simply see the original headline. The tool
+mentions it once in its log and carries on; nothing else changes.
+
+### The free daily allowance
+
+Without any setting-up, MyMemory translates about **5,000 characters a day**
+for free, which is about 30 to 150 headlines depending on how long they are.
+After that it stops answering until the next day and you see original headlines
+for the rest of the day.
+
+**Setting this up is recommended, not optional.** Without an email address of
+your own, that free allowance is shared with everyone else using GitHub's
+servers, so it is often already used up by the time your check runs and your
+titles stay untranslated. Giving MyMemory an address of your own raises it to
+**50,000 characters a day**, for you alone.
+
+To do it, on GitHub open this project, **Settings**, then **Secrets and
+variables**, then **Actions**, press **New repository secret**, name it exactly
+`MYMEMORY_EMAIL`, and put any email address you choose in the value box. It is
+stored as a secret: it never appears on the web page, in a message, in the logs
+or anywhere in the project. Nothing else about the tool changes.
+
+If a check cannot reach MyMemory, it tries again and only gives up for that one
+check after two failures in a row. Titles it could not translate are picked up
+by a later check, so a deal on the page usually gets its English title within a
+few minutes even when the service was briefly down.
 
 ## "Source down" messages
 
@@ -101,8 +189,12 @@ Every part explained:
   public Telegram channel's web preview page. Almost always `feed`.
 - `url` - the address of the feed. Most blogs have one at their address
   followed by `/feed/`.
-- `language` - `en`, `de`, `fr`, `zh` or `ja`. This is only a note to yourself;
-  every price-mistake phrase in the file is checked against every source.
+- `language` - `en`, `de`, `fr`, `zh` or `ja`. Get this one right: it says
+  which language the headlines are written in, and the tool translates them
+  into English from that language (see "English titles" above). Say `ja` for a
+  site that writes in Japanese, `en` for one that writes in English, and so on.
+  It does not change what counts as a bargain: every price-mistake phrase in
+  the file is checked against every source whatever its language.
 - `require_sale_word` - add `require_sale_word: true` for a general news site
   that only sometimes writes about bargains, such as a tech news site. Posts
   from it are then ignored unless they mention a sale or a discount, or their
@@ -149,6 +241,15 @@ Near the top of the file:
 That is the percentage that buzzes your phone. Raise it to 80 for fewer
 messages, lower it to 60 for more. `dashboard_discount: 40` is the percentage
 from which a deal appears on the web page, and works the same way.
+
+Two more settings sit in the same block and control translation:
+
+- `max_translations_per_run: 40` - how many headlines one check may translate.
+  Lower it to use less of the daily allowance; raise it if titles are being
+  missed and you have set up `MYMEMORY_EMAIL`.
+- `retranslate_per_run: 5` - how many deals already on the page get a second
+  try at an English title each check, for the ones stored while MyMemory was
+  unreachable.
 
 ## When something looks wrong
 

@@ -1,7 +1,7 @@
 name: scan
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
       test_message:
@@ -38,6 +38,7 @@ jobs:
           TG_CHAT_US: ${{ secrets.TG_CHAT_US }}
           TG_CHAT_EU: ${{ secrets.TG_CHAT_EU }}
           TG_CHAT_TEST: ${{ secrets.TG_CHAT_TEST }}
+          MYMEMORY_EMAIL: ${{ secrets.MYMEMORY_EMAIL }}
         run: uv run --no-dev python run.py --test-message
       - name: Scan
         if: ${{ !inputs.test_message }}
@@ -50,6 +51,7 @@ jobs:
           TG_CHAT_US: ${{ secrets.TG_CHAT_US }}
           TG_CHAT_EU: ${{ secrets.TG_CHAT_EU }}
           TG_CHAT_TEST: ${{ secrets.TG_CHAT_TEST }}
+          MYMEMORY_EMAIL: ${{ secrets.MYMEMORY_EMAIL }}
         run: uv run --no-dev python run.py
       # always(): even a scan that failed part way may already have sent alerts,
       # and those are only recorded in the state file.

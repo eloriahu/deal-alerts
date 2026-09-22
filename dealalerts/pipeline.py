@@ -2,7 +2,7 @@
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Callable, List, Mapping, Optional, Tuple
 
@@ -15,6 +15,7 @@ from dealalerts.parse import deal_id, parse_fields
 from dealalerts.score import score
 from dealalerts.store import State
 from dealalerts.times import parse_utc
+from dealalerts.translate import Translator
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,66 @@ def to_deal(post: RawPost, source: Source, now: datetime, identifier: str) -> De
         discount_pct=fields.discount_pct, heat=post.heat, posted_at=post.posted_at,
         first_seen=now.isoformat(),
     )
+
+
+def _translated(deal: Deal, source: Source, translator: Optional[Translator]) -> Deal:
+    """Attach an English headline to a deal from a source that is not in English.
+
+    Never raises and never holds anything up: a headline that cannot be
+    translated simply stays in its own language. The translator is injected, so
+    it could be anything; only an exception's class name is ever logged, because
+    its text could quote the address that carries the email.
+    """
+    if translator is None or source.language == "en":
+        return deal
+    english: Optional[str] = None
+    failure: Optional[str] = None
+    try:
+        english = translator.english_title(deal.title, source.language)
+    except Exception as error:  # noqa: BLE001 - deliberate: see docstring
+        failure = type(error).__name__
+    if failure is not None:
+        logger.warning("A title could not be translated (%s); the original is kept", failure)
+        return deal
+    return deal if english is None else replace(deal, title_en=english)
+
+
+def _fill_missing_titles(state: State, config: Config, translator: Optional[Translator],
+                         limit: int) -> None:
+    """Give stored deals that still have no English headline another try. Never raises.
+
+    A deal stored while the translation service was unreachable would otherwise
+    keep its original headline for the whole week it is shown. Newest first, and
+    never more than ``limit`` of them, so a long backlog cannot eat a run. These
+    asks share the translator's own per-run budget, so the total is unchanged.
+    """
+    if translator is None or limit <= 0:
+        return
+    languages = {source.name: source.language for source in config.sources}
+    waiting = [
+        record for record in state.deals
+        if not record.get("title_en")
+        and isinstance(record.get("title"), str)
+        and languages.get(record.get("source"), "en") != "en"
+    ]
+    # A stored record can be hand-edited, so sort on text rather than trusting
+    # every first_seen to be comparable with every other.
+    waiting.sort(key=lambda record: str(record.get("first_seen") or ""), reverse=True)
+    for record in waiting[:limit]:
+        english: Optional[str] = None
+        failure: Optional[str] = None
+        try:
+            english = translator.english_title(record["title"], languages[record["source"]])
+        except Exception as error:  # noqa: BLE001 - deliberate: see docstring
+            # Only the class name, for the same reason as _translated above.
+            failure = type(error).__name__
+        if failure is not None:
+            logger.warning(
+                "Missing titles could not be translated (%s); the originals are kept", failure
+            )
+            return
+        if english:
+            record["title_en"] = english
 
 
 def _deliver(client: PoliteClient, env: Mapping[str, str], region: str, text: str,
@@ -150,6 +211,7 @@ def run_once(
     sleep: Callable[[float], None] = time.sleep,
     checkpoint: Optional[Callable[[], None]] = None,
     clock: Callable[[], float] = time.monotonic,
+    translator: Optional[Translator] = None,
 ) -> RunReport:
     """Read all sources, record new deals, send pending alerts and source-down notes.
 
@@ -157,6 +219,8 @@ def run_once(
         checkpoint: Called after the fetch loop and after every alert that was
             actually delivered, so work already done survives a later crash.
         clock: Elapsed-time source for the fetch budget, injected for tests.
+        translator: Optional English-headline lookup. None means every title is
+            kept in its own language.
     """
     settings = config.settings
     fetched = new = skipped = sources_skipped = 0
@@ -237,6 +301,11 @@ def run_once(
             try:
                 deal = to_deal(post, source, now, identifier)
                 verdict = score(deal, f"{post.title} {post.summary}", source, config, now)
+                if verdict.tier != "ignore":
+                    # Only what is going to be shown is worth translating, and
+                    # the lookup has its own guard, so it can neither raise out
+                    # of here nor cost the deal.
+                    deal = _translated(deal, source, translator)
             except Exception as error:  # noqa: BLE001 - deliberate: see comment above
                 # The id is already marked seen (above), so this post will not be
                 # retried and cannot crash the run again on a later pass.
@@ -251,6 +320,11 @@ def run_once(
             state.add_deal(deal, verdict)
             if backlog and verdict.tier == "alert":
                 state.mark_alerted(deal.id, now)
+
+    # Deals stored while the service was unreachable get another try here, before
+    # anything is sent, so a filled-in headline reaches the message as well as
+    # the page. It shares the run's translation budget.
+    _fill_missing_titles(state, config, translator, settings.retranslate_per_run)
 
     _save_progress(checkpoint)
 

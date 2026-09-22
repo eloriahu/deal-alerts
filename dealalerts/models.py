@@ -55,6 +55,9 @@ class Deal:
     heat: Optional[int]
     posted_at: Optional[str]
     first_seen: str
+    # The headline in English, for display only. Last, and optional, so records
+    # saved before this existed still load and every older call still works.
+    title_en: Optional[str] = None
 
 
 @dataclass(frozen=True)

@@ -71,10 +71,13 @@ class JsonListResponse:
 
 
 class FixedResponseSession:
-    """A session whose post() always returns a given response."""
+    """A session whose get() and post() always return a given response."""
 
     def __init__(self, response: object) -> None:
         self._response = response
+
+    def get(self, url: str, **_: object) -> object:
+        return self._response
 
     def post(self, url: str, **_: object) -> object:
         return self._response
@@ -202,3 +205,53 @@ def test_post_json_unexpected_decode_error_raises_without_leaking_the_address() 
     assert "SECRET123" not in str(caught.value)
     assert caught.value.__context__ is None
     assert caught.value.__cause__ is None
+
+
+# ---------------------------------------------------------------------------
+# get_json: the same handling as post_json, for a service that answers on GET.
+# The address carries the query, which can hold the optional email, so no
+# failure here may ever quote more than the host.
+# ---------------------------------------------------------------------------
+
+
+def test_get_json_returns_the_decoded_dict() -> None:
+    client = PoliteClient(0, session=FakeSession(), sleep=lambda _: None)
+    assert client.get_json("https://api.test/get?q=x&de=SECRET123") == {"ok": True}
+
+
+def test_get_json_invalid_json_reply_raises_without_leaking_the_address() -> None:
+    error = ValueError("Expecting value: https://api.test/get?de=SECRET123")
+    client = PoliteClient(0, session=FixedResponseSession(JsonRaisingResponse(error)),
+                          sleep=lambda _: None)
+    with pytest.raises(FetchError) as caught:
+        client.get_json("https://api.test/get?de=SECRET123")
+    assert "invalid JSON reply" in str(caught.value)
+    assert "api.test" in str(caught.value)
+    assert "SECRET123" not in str(caught.value)
+    assert caught.value.__context__ is None and caught.value.__cause__ is None
+
+
+def test_get_json_non_dict_reply_is_an_error() -> None:
+    client = PoliteClient(0, session=FixedResponseSession(JsonListResponse()),
+                          sleep=lambda _: None)
+    with pytest.raises(FetchError, match="invalid JSON reply"):
+        client.get_json("https://api.test/get?de=SECRET123")
+
+
+def test_get_json_network_failure_raises_without_leaking_the_address() -> None:
+    error = requests.Timeout("Read timed out: https://api.test/get?de=SECRET123")
+    client = PoliteClient(0, session=RaisingGetSession(error), sleep=lambda _: None)
+    with pytest.raises(FetchError) as caught:
+        client.get_json("https://api.test/get?de=SECRET123")
+    assert "api.test" in str(caught.value)
+    assert "Timeout" in str(caught.value)
+    assert "SECRET123" not in str(caught.value)
+    assert caught.value.__context__ is None and caught.value.__cause__ is None
+
+
+def test_get_json_refuses_a_bad_status_without_leaking_the_address() -> None:
+    client = PoliteClient(0, session=FakeSession(status=429), sleep=lambda _: None)
+    with pytest.raises(FetchError) as caught:
+        client.get_json("https://api.test/get?de=SECRET123")
+    assert "HTTP 429" in str(caught.value)
+    assert "SECRET123" not in str(caught.value)

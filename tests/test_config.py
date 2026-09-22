@@ -232,3 +232,38 @@ def test_a_section_name_that_is_not_text_is_rejected_plainly(tmp_path: Path) -> 
 def test_the_shipped_files_still_load() -> None:
     assert load_config(ROOT / "sources.yaml").sources
     load_config(ROOT / "scripts" / "candidates.yaml")
+
+
+def test_online_only_regions_rejects_an_unknown_region(tmp_path: Path) -> None:
+    bad = write(tmp_path, "settings:\n  online_only_regions: [mars]\n" + ONE_SOURCE)
+    with pytest.raises(ValueError, match="setting 'online_only_regions' may only list"):
+        load_config(bad)
+
+
+def test_the_unknown_region_message_does_not_quote_the_value(tmp_path: Path) -> None:
+    bad = write(tmp_path, "settings:\n  online_only_regions: [SECRETPLACE]\n" + ONE_SOURCE)
+    with pytest.raises(ValueError) as caught:
+        load_config(bad)
+    assert "SECRETPLACE" not in str(caught.value)
+
+
+def test_online_only_regions_must_be_a_list_of_text(tmp_path: Path) -> None:
+    for line in ("  online_only_regions: hk\n", "  online_only_regions: [hk, 7]\n"):
+        bad = write(tmp_path, "settings:\n" + line + ONE_SOURCE)
+        with pytest.raises(ValueError,
+                           match="setting 'online_only_regions' must be a list of text"):
+            load_config(bad)
+
+
+def test_the_shipped_file_lists_the_online_only_regions_and_in_store_words() -> None:
+    config = load_config(ROOT / "sources.yaml")
+    assert config.settings.online_only_regions == ("hk", "jp", "us", "eu")
+    assert "dine-in" in config.in_store_words
+    assert "堂食" in config.in_store_words
+    assert "filiale" in config.in_store_words
+
+
+def test_the_shipped_file_sets_both_translation_limits() -> None:
+    config = load_config(ROOT / "sources.yaml")
+    assert config.settings.max_translations_per_run == 40
+    assert config.settings.retranslate_per_run == 5

@@ -131,3 +131,40 @@ def test_posted_at_with_no_timezone_six_minutes_ago() -> None:
     msg = format_message(deal, NOW)
     # Should show "posted 6 min ago"
     assert "posted 6 min ago" in msg
+
+
+# ---------------------------------------------------------------------------
+# English headlines. Display only: the original is always kept underneath.
+# ---------------------------------------------------------------------------
+
+
+def test_the_english_headline_leads_with_the_original_underneath() -> None:
+    deal = dict(FULL, title="【価格ミス】ソニー ヘッドホン", title_en="Sony headphones price error")
+    assert format_message(deal, NOW).startswith(
+        "<b>PRICE ERROR?</b>  Sony headphones price error\n"
+        "<i>【価格ミス】ソニー ヘッドホン</i>\n"
+    )
+
+
+def test_a_deal_with_no_english_headline_reads_exactly_as_before() -> None:
+    assert format_message(dict(FULL, title_en=None), NOW) == format_message(FULL, NOW)
+
+
+def test_a_record_saved_before_english_headlines_still_formats() -> None:
+    """Records already in data/state.json have no such key at all."""
+    assert "title_en" not in FULL
+    assert format_message(FULL, NOW).startswith(
+        "<b>PRICE ERROR?</b>  Sony WH-1000XM6 &amp; case\nS$89"
+    )
+
+
+def test_an_english_headline_equal_to_the_original_is_not_repeated() -> None:
+    assert "<i>" not in format_message(dict(FULL, title_en=FULL["title"]), NOW)
+
+
+def test_a_hostile_english_headline_is_escaped() -> None:
+    deal = dict(FULL, title="<b>original</b>", title_en="<script>alert(1)</script>")
+    message = format_message(deal, NOW)
+    assert "<script>" not in message
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in message
+    assert "<i>&lt;b&gt;original&lt;/b&gt;</i>" in message

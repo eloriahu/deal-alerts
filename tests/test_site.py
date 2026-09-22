@@ -160,3 +160,38 @@ def test_build_site_never_mutates_state_deals(tmp_path: Path) -> None:
 
     assert state.deals is before
     assert state.deals == snapshot
+
+
+# ---------------------------------------------------------------------------
+# English titles on the page: the link text, with the original muted underneath.
+# ---------------------------------------------------------------------------
+
+
+def build_with(tmp_path: Path, **overrides: Any) -> str:
+    """The page, with one extra deal carrying the given fields."""
+    state = make_state()
+    state.deals.append(bad_record(overrides.pop("title", "A deal"), **overrides))
+    return build_site(state, CONFIG, NOW, tmp_path).read_text(encoding="utf-8")
+
+
+def test_the_english_title_is_the_link_text_with_the_original_underneath(tmp_path: Path) -> None:
+    page = build_with(tmp_path, title="【価格ミス】ソニー", title_en="Sony price error")
+    assert ">Sony price error</a>" in page
+    assert '<div class="orig">【価格ミス】ソニー</div>' in page
+    assert ".orig" in page  # the muted style is defined
+
+
+def test_a_deal_with_no_english_title_renders_as_before(tmp_path: Path) -> None:
+    assert 'class="orig"' not in build(tmp_path)
+
+
+def test_an_english_title_equal_to_the_original_is_not_repeated(tmp_path: Path) -> None:
+    assert 'class="orig"' not in build_with(tmp_path, title="Same", title_en="Same")
+
+
+def test_a_hostile_english_title_is_escaped(tmp_path: Path) -> None:
+    page = build_with(tmp_path, title="plain <b>original</b>",
+                      title_en="<script>alert(1)</script>")
+    assert "<script>alert(1)</script>" not in page
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
+    assert "&lt;b&gt;original&lt;/b&gt;" in page

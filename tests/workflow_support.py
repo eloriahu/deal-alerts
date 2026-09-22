@@ -34,6 +34,9 @@ EXPECTED_SCAN_ENV_VARS = (
     "TG_CHAT_US",
     "TG_CHAT_EU",
     "TG_CHAT_TEST",
+    # Optional: an email that raises MyMemory's free daily translation limit.
+    # An unset secret arrives as an empty value, which is treated as absent.
+    "MYMEMORY_EMAIL",
 )
 
 # The scan job's steps, in the exact required order. Each entry lists only the

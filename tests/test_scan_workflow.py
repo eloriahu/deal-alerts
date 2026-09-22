@@ -15,10 +15,10 @@ from workflow_support import (
 )
 
 
-def test_scan_schedule_is_every_fifteen_minutes() -> None:
+def test_scan_schedule_is_every_five_minutes() -> None:
     workflow = load_yaml(SCAN_PATH)
     trigger = trigger_section(workflow)
-    assert trigger["schedule"] == [{"cron": "*/15 * * * *"}]
+    assert trigger["schedule"] == [{"cron": "*/5 * * * *"}]
 
 
 def test_scan_has_workflow_dispatch_with_test_message_boolean() -> None:
@@ -63,6 +63,14 @@ def test_only_the_two_steps_that_run_run_py_carry_the_secrets() -> None:
         if step.get("name") not in RUN_PY_STEP_NAMES and "env" in step
     ]
     assert elsewhere == []
+
+
+def test_the_two_run_steps_carry_exactly_eight_secrets() -> None:
+    """Pinning the count as well as the names: a secret quietly dropped from one of
+    the steps would otherwise only show as alerts, or English titles, going missing."""
+    assert len(EXPECTED_SCAN_ENV_VARS) == 8
+    assert len(set(EXPECTED_SCAN_ENV_VARS)) == 8
+    assert "MYMEMORY_EMAIL" in EXPECTED_SCAN_ENV_VARS
 
 
 def test_scan_runs_run_py_and_a_test_message_variant() -> None:

@@ -14,8 +14,14 @@ logger = logging.getLogger(__name__)
 
 # Every top-level section sources.yaml may hold. Anything else is a typo.
 KNOWN_SECTIONS: Tuple[str, ...] = (
-    "settings", "glitch_words", "sale_words", "ignore_words", "expired_words", "sources",
+    "settings", "glitch_words", "sale_words", "ignore_words", "in_store_words",
+    "expired_words", "sources",
 )
+
+# The kind of a setting that holds a list of text, such as online_only_regions.
+# YAML gives a list; the Settings field keeps a tuple, so it is converted on the
+# way in and the loaded settings stay immutable like every other record here.
+_TEXT_LIST = Tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -34,6 +40,15 @@ class Settings:
     max_consecutive_send_failures: int = 3
     fetch_budget_seconds: float = 300
     max_alert_age_hours: int = 24
+    # How many headlines one run may send for translation. The free allowance is
+    # a few thousand characters a day, shared by every run.
+    max_translations_per_run: int = 40
+    # How many deals already on the page may have a second try at an English
+    # headline each run, for the ones stored while the service was unreachable.
+    retranslate_per_run: int = 5
+    # Regions where a deal that can only be taken in a shop or a restaurant is
+    # no use, so it is dropped. Singapore is left out: that is where she is.
+    online_only_regions: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -48,6 +63,9 @@ class Config:
     # Posts containing one of these are never judged on their percentage: the
     # percentage belongs to a sign-up offer, a lottery or a similar teaser.
     ignore_words: Tuple[str, ...] = ()
+    # Posts containing one of these name a shop floor or a dining room. In the
+    # regions listed under online_only_regions they are dropped outright.
+    in_store_words: Tuple[str, ...] = ()
 
 
 def _flatten(words_by_language: Dict[str, Iterable[str]]) -> Tuple[str, ...]:
@@ -77,7 +95,8 @@ def _check_sections(raw: Dict[Any, Any]) -> None:
 
 def _what_it_must_be(wanted: Any) -> str:
     """Plain words for the kind of value a setting takes."""
-    return {int: "a whole number", float: "a number", bool: "true or false"}.get(wanted, "text")
+    return {int: "a whole number", float: "a number", bool: "true or false",
+            _TEXT_LIST: "a list of text"}.get(wanted, "text")
 
 
 def _has_right_type(value: Any, wanted: Any) -> bool:
@@ -86,6 +105,8 @@ def _has_right_type(value: Any, wanted: Any) -> bool:
     ``True`` is an ``int`` in Python, so a boolean is never accepted where a
     number is wanted; a whole-number setting never accepts a fraction.
     """
+    if wanted == _TEXT_LIST:
+        return isinstance(value, list) and all(isinstance(item, str) for item in value)
     if wanted is bool:
         return isinstance(value, bool)
     if isinstance(value, bool):
@@ -95,6 +116,18 @@ def _has_right_type(value: Any, wanted: Any) -> bool:
     if wanted is int:
         return isinstance(value, int)
     return isinstance(value, wanted)
+
+
+def _check_region_list(values: Iterable[str], key: str) -> None:
+    """Raise ValueError if a settings list names a region this tool does not have.
+
+    The message names the setting and the regions this tool knows, never the
+    value from the file, for the same reason as every other check here.
+    """
+    for region in values:
+        if region not in REGIONS:
+            raise ValueError(f"sources.yaml: setting {key!r} may only list these regions: "
+                             f"{', '.join(REGIONS)}")
 
 
 def _check_settings(raw: Any) -> Dict[str, Any]:
@@ -115,7 +148,11 @@ def _check_settings(raw: Any) -> Dict[str, Any]:
             raise ValueError(
                 f"sources.yaml: setting {key!r} must be {_what_it_must_be(expected[key])}"
             )
-    return raw
+    _check_region_list(raw.get("online_only_regions", ()), "online_only_regions")
+    return {
+        key: tuple(value) if expected[key] == _TEXT_LIST else value
+        for key, value in raw.items()
+    }
 
 
 def _check_word_map(raw: Any, section: str) -> Dict[str, Iterable[str]]:
@@ -235,4 +272,7 @@ def load_config(path: Path, require_sources: bool = True) -> Config:
             word.casefold() for word in _check_word_list(raw.get("expired_words"), "expired_words")
         ),
         ignore_words=_flatten(_check_word_map(raw.get("ignore_words"), "ignore_words")),
+        in_store_words=_flatten(
+            _check_word_map(raw.get("in_store_words"), "in_store_words")
+        ),
     )

@@ -1,8 +1,10 @@
 """Decide whether a deal buzzes the phone, sits on the dashboard, or is dropped."""
 
 import logging
+import re
 from datetime import datetime
-from typing import List
+from functools import lru_cache
+from typing import List, Optional, Pattern, Tuple
 
 from dealalerts.config import Config
 from dealalerts.models import Deal, Source, Verdict
@@ -11,6 +13,43 @@ from dealalerts.times import parse_utc
 logger = logging.getLogger(__name__)
 
 _IGNORE = Verdict(tier="ignore", kind="", reasons=())
+
+# Chinese and Japanese characters, including the kana and the full-width forms.
+# A word holding any of these comes from a language written without spaces.
+_UNSPACED_SCRIPT = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff00-\uffef]")
+
+
+@lru_cache(maxsize=8)
+def _in_store_matchers(words: Tuple[str, ...]) -> Tuple[Optional[Pattern[str]], Tuple[str, ...]]:
+    """Split the in-store words into a whole-word pattern and plain-search words.
+
+    English, German and French put spaces between words, so "in store" must fire
+    on "in store only" and not on "Skin Store", and "eat-in" must not fire on
+    "heat-insulated". Those words are matched whole. Chinese and Japanese are
+    written without spaces, so a whole-word rule would never fire on them at all
+    ("店内" sits inside "期間限定の店内セール" with no break either side); those
+    stay a plain search for the characters anywhere in the text.
+
+    The result is cached because it is the same for every post in a run and
+    rebuilding the pattern per post would be wasted work.
+    """
+    spaced = [word for word in words if _UNSPACED_SCRIPT.search(word) is None]
+    unspaced = tuple(word for word in words if _UNSPACED_SCRIPT.search(word) is not None)
+    pattern = None
+    if spaced:
+        # Longest first, so "in-store" is preferred over a shorter word that
+        # starts the same way; re.escape keeps a hyphen or a dot literal.
+        joined = "|".join(re.escape(word) for word in sorted(spaced, key=len, reverse=True))
+        pattern = re.compile(rf"\b(?:{joined})\b")
+    return pattern, unspaced
+
+
+def _mentions_in_store(folded: str, words: Tuple[str, ...]) -> bool:
+    """True if the casefolded text names a shop floor or a dining room."""
+    pattern, unspaced = _in_store_matchers(words)
+    if pattern is not None and pattern.search(folded):
+        return True
+    return any(word in folded for word in unspaced)
 
 
 def _age_minutes(deal: Deal, now: datetime) -> float:
@@ -36,7 +75,8 @@ def score(deal: Deal, text: str, source: Source, config: Config, now: datetime) 
 
     Args:
         deal: The parsed deal.
-        text: Title plus summary, checked for glitch words and sale words.
+        text: Title plus summary, checked for sale words, ignore words and
+            in-store words.
         source: Where the deal came from (vote threshold, sale-word gate).
         config: Thresholds and word lists.
         now: Current time, timezone-aware UTC.
@@ -46,6 +86,14 @@ def score(deal: Deal, text: str, source: Source, config: Config, now: datetime) 
         return _IGNORE
 
     folded = text.casefold()
+    # Outside Singapore only a deal she can take from where she sits is any use,
+    # so a post naming a shop floor or a dining room is dropped. This comes
+    # before every other rule on purpose: a price error at a till, and a post the
+    # crowd is voting up, are both still trips she is not going to make.
+    if (source.region in settings.online_only_regions
+            and _mentions_in_store(folded, config.in_store_words)):
+        return _IGNORE
+
     # Price-error words are read in the headline only. In a summary they are
     # almost always about something else ("the app has a glitch"), and a news
     # site's story about a configuration mistake is not a deal.
