@@ -39,15 +39,13 @@ sources:
      url: "https://www.moneydigest.sg/feed/"}
   - {name: MileLion, region: sg, kind: feed, language: en, require_sale_word: true,
      url: "https://milelion.com/feed/"}
-  - {name: r/singaporedeals, region: sg, kind: feed, language: en,
-     url: "https://www.reddit.com/r/singaporedeals/new/.rss"}
   # Hong Kong
   - {name: Jetso Club, region: hk, kind: feed, language: zh,
      url: "https://www.jetsoclub.com/feeds/posts/default"}
-  - {name: Jetso Today, region: hk, kind: feed, language: zh,
-     url: "https://www.jetsotoday.com/feed"}
   - {name: GoTrip, region: hk, kind: feed, language: zh,
      url: "https://www.gotrip.hk/feed"}
+  - {name: FlyAgain, region: hk, kind: feed, language: zh,
+     url: "https://flyagain.la/feed/"}
   # Japan
   - {name: Gekiyasu, region: jp, kind: feed, language: ja,
      url: "https://gekiyasu-gekiyasu.doorblog.jp/index.rdf"}
@@ -60,10 +58,6 @@ sources:
      url: "https://slickdeals.net/newsearch.php?mode=frontpage&searcharea=deals&searchin=first&rss=1"}
   - {name: Slickdeals Popular, region: us, kind: feed, language: en, heat_threshold: 60,
      url: "https://slickdeals.net/newsearch.php?mode=popdeals&searcharea=deals&searchin=first&rss=1"}
-  - {name: r/deals, region: us, kind: feed, language: en,
-     url: "https://www.reddit.com/r/deals/new/.rss"}
-  - {name: r/buildapcsales, region: us, kind: feed, language: en,
-     url: "https://www.reddit.com/r/buildapcsales/new/.rss"}
   - {name: The Flight Deal, region: us, kind: feed, language: en,
      url: "https://www.theflightdeal.com/feed/"}
   # Europe
@@ -73,5 +67,9 @@ sources:
      url: "https://www.mein-deal.com/feed/"}
   - {name: Travel-Dealz, region: eu, kind: feed, language: en,
      url: "https://travel-dealz.eu/feed/"}
-  - {name: r/UKDeals, region: eu, kind: feed, language: en,
-     url: "https://www.reddit.com/r/UKDeals/new/.rss"}
+  - {name: HotUKDeals, region: eu, kind: feed, language: en,
+     url: "https://www.hotukdeals.com/rss/hot"}
+  - {name: mydealz, region: eu, kind: feed, language: de,
+     url: "https://www.mydealz.de/rss/hot"}
+  - {name: Dealabs, region: eu, kind: feed, language: fr,
+     url: "https://www.dealabs.com/rss/hot"}

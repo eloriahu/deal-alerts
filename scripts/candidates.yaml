@@ -1,10 +1,2 @@
 sources:
-  - {name: FlyAgain, region: hk, kind: feed, language: zh, url: "https://flyagain.la/feed/"}
-  - {name: r/HongKong deals, region: hk, kind: feed, language: en,
-     url: "https://www.reddit.com/r/HongKong/search.rss?q=deal&restrict_sr=1&sort=new"}
   - {name: Kaimono Yosan, region: jp, kind: feed, language: ja, url: "https://kaimono-yosan.com/feed/"}
-  - {name: r/japandeals, region: jp, kind: feed, language: en,
-     url: "https://www.reddit.com/r/japandeals/new/.rss"}
-  - {name: HotUKDeals, region: eu, kind: feed, language: en, url: "https://www.hotukdeals.com/rss/hot"}
-  - {name: mydealz, region: eu, kind: feed, language: de, url: "https://www.mydealz.de/rss/hot"}
-  - {name: Dealabs, region: eu, kind: feed, language: fr, url: "https://www.dealabs.com/rss/hot"}
