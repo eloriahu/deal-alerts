@@ -46,7 +46,10 @@ def parse_feed(content: bytes) -> List[RawPost]:
         if not title or not link:
             continue
         summary = _plain_text(entry.get("summary", ""))
-        votes = _THUMB_SCORE.search(summary)
+        # Slickdeals puts "Thumb Score: +N" in content:encoded, not in the description,
+        # so the vote count is looked for in every text field the entry carries.
+        extra = " ".join(_plain_text(c.get("value", "")) for c in entry.get("content", []))
+        votes = _THUMB_SCORE.search(summary) or _THUMB_SCORE.search(extra)
         posts.append(
             RawPost(
                 title=title,

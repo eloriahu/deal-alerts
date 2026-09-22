@@ -51,3 +51,20 @@ def test_atom_entries_are_read_and_times_become_utc() -> None:
 def test_a_web_page_instead_of_a_feed_is_an_error() -> None:
     with pytest.raises(FetchError, match="not a feed"):
         parse_feed(b"<!DOCTYPE html><html><body>Access denied</body></html>")
+
+
+RSS_VOTES_IN_CONTENT = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Slickdeals</title>
+<item>
+  <title>Umbrella Side Table $50 + Free S&amp;H</title>
+  <link>https://slickdeals.net/f/125-side-table</link>
+  <description>$50 Coupon must be added before adding to cart.</description>
+  <content:encoded>&lt;div&gt;&lt;p&gt;Deal text.&lt;/p&gt; Thumb Score: +33 &lt;/div&gt;</content:encoded>
+</item>
+</channel></rss>"""
+
+
+def test_votes_are_read_from_the_content_field_slickdeals_really_uses() -> None:
+    posts = parse_feed(RSS_VOTES_IN_CONTENT)
+    assert posts[0].heat == 33
+    assert posts[0].summary == "$50 Coupon must be added before adding to cart."
