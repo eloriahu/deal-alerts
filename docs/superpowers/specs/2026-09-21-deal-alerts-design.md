@@ -18,7 +18,7 @@ at zero cost, with no dependence on any PC being on.
 | Phone alerts | Telegram. One bot, five channels: SG Deals, HK Deals, Japan Deals, US Deals, Europe Deals. Each can be muted on its own. |
 | Strictness | Two tiers. Phone alert for suspected glitches and discounts of 70% or more. Dashboard only for 40 to 70% off. |
 | Categories | Everything. No category filter. |
-| Hosting | GitHub: scheduled run every 15 minutes, dashboard on GitHub Pages, public repository `github.com/eloriahu/deal-alerts`. |
+| Hosting | GitHub: scheduled run every 5 minutes, dashboard on GitHub Pages, public repository `github.com/eloriahu/deal-alerts`. |
 | Cost | Zero. No paid service, no credit card. |
 
 ## How it finds deals
@@ -61,14 +61,23 @@ Each part has one job and can be tested on its own.
 | `notify.py` | Send one Telegram message per new `alert` deal to that region's channel | deal + tier | message sent |
 | `site.py` | Build the static dashboard page into `public/` (published by the run; not the `docs/` folder, which holds this spec) | state | `index.html` |
 | `run.py` | Run the parts in order; one source failing never stops the rest | none | exit code |
-| `.github/workflows/scan.yml` | Timer (every 15 minutes), runs `run.py`, commits `data/state.json`, publishes `public/` to GitHub Pages | none | none |
+| `translate.py` | Ask MyMemory for an English headline. Display only: never touches scoring | title + source language | English title or nothing |
+| `.github/workflows/scan.yml` | Timer (every 5 minutes), runs `run.py`, commits `data/state.json`, publishes `public/` to GitHub Pages | none | none |
 
 `Deal` record: id (`<region>-<hash of the cleaned link>`), region, source,
-title, link, shop, price now, usual price, discount %, votes or heat if the
-source gives it, posted time, first seen time. The id carries the region, so
+title, English title if one was obtained, link, shop, price now, usual price,
+discount %, votes or heat if the source gives it, posted time, first seen time. The id carries the region, so
 the same link in two regions is two separate deals.
 
 ## Scoring rules
+
+First, before anything else: in the regions listed under `online_only_regions`
+(Hong Kong, Japan, the US and Europe as shipped) a post whose title or summary
+carries one of the `in_store_words` is dropped outright. Those are regions the
+owner can only buy from at a distance, so a bargain that can only be taken on a
+shop floor or in a dining room is noise there. This overrides every rule below,
+including the price-error words and the vote count: a price error at a till is
+still a till. Singapore is deliberately not in the list.
 
 Phone alert (tier `alert`) when any of these is true:
 
@@ -109,8 +118,13 @@ marked expired by the source are skipped.
 Chinese and Japanese posts: prices and discounts are read with patterns for
 those scripts ("HK$", "港幣", "円", "￥", "半額" meaning half price, "7割引"
 meaning 70% off, "3折" meaning 70% off in Hong Kong usage, where the number is
-the share you pay). Titles are shown in the original language in this version;
-the price, discount and shop lines of the alert are always in English.
+the share you pay). Titles are shown in English with the original underneath,
+translated by MyMemory (free, no sign-up) from the source's declared language;
+the price, discount and shop lines of the alert are always in English. The
+translation is display only and never reaches scoring, so a translation that is
+wrong, late or missing cannot change what alerts. A source whose translation
+fails once is not retried for the rest of that run, and one run asks at most
+`max_translations_per_run` times.
 
 Each deal alerts once. It is remembered by its region-scoped id for 30 days
 after it was last seen, so a post that sits in a feed for months never alerts
@@ -131,7 +145,11 @@ Source: SingPromos, posted 6 min ago
 
 The bot key and the five channel ids are kept in GitHub's encrypted secrets
 (`TELEGRAM_BOT_TOKEN`, `TG_CHAT_SG`, `TG_CHAT_HK`, `TG_CHAT_JP`, `TG_CHAT_US`, `TG_CHAT_EU`). They never
-appear in the repository, the logs, or the dashboard.
+appear in the repository, the logs, or the dashboard. One further optional
+secret, `MYMEMORY_EMAIL`, holds any email address and raises MyMemory's free
+daily allowance from 5,000 to 50,000 characters; it is treated exactly like the
+others and never leaves the encrypted store. Without it the anonymous allowance
+applies and everything still works.
 
 ## Dashboard
 
@@ -139,7 +157,8 @@ One static page at `https://eloriahu.github.io/deal-alerts/`.
 
 - Five tabs: Singapore, Hong Kong, Japan, US, Europe. The chosen tab is remembered.
 - Suspected glitches pinned at the top of each tab, then other deals, newest first.
-- Each row: product, price now, usual price, discount, shop, source, age, link.
+- Each row: product (in English, with the original headline underneath), price
+  now, usual price, discount, shop, source, age, link.
 - Header shows when the last check ran.
 - A health line per source: last success time, and a red mark after failures.
 - Readable on a phone. Shows the last 7 days.

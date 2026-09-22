@@ -4,8 +4,11 @@ This is a small free tool that watches public bargain websites for Singapore,
 Hong Kong, Japan, the US and Europe, and messages your phone when something
 looks like a mistake or a very deep cut.
 
-It checks every 15 minutes. GitHub (the website that stores this project) runs
+It checks every 5 minutes. GitHub (the website that stores this project) runs
 it, so no computer of yours has to be switched on, and it costs nothing.
+GitHub's timer is loose: a check can turn up a few minutes late, and sometimes
+one is skipped when GitHub is busy. Nothing is lost when that happens; the next
+check picks up whatever was posted in the meantime.
 
 Everything it finds is also listed on a web page:
 https://eloriahu.github.io/deal-alerts/
@@ -48,6 +51,40 @@ dropped.
 
 Each deal buzzes once, and only once, even if several sites post it.
 
+## Only online deals outside Singapore
+
+Outside Singapore you cannot walk into the shop, so a bargain you could only
+take at a till or a dinner table is no use to you. In **Hong Kong, Japan, the
+US and Europe** the tool therefore throws away any post whose headline or
+description mentions a shop floor or a dining room: "in-store", "dine-in",
+"restaurant", 堂食, 店舗, "Filiale", "en magasin" and so on.
+
+This beats every other rule. Even a post that says "price error", and even one
+with 90% off, is dropped if it also says "in-store only".
+
+**Singapore is never filtered this way.** That is where you are, so a shop deal
+there still reaches you.
+
+The words live in `sources.yaml` under `in_store_words`, grouped by language.
+To stop dropping posts that mention buffets, delete `"buffet"` from the list
+it appears in. To start dropping posts about click-and-collect, add it:
+
+```yaml
+  en: ["in-store", "in store", "instore", "store only", "click and collect"]
+```
+
+Keep the quotation marks and the commas exactly as they are.
+
+The regions this applies to are listed near the top of the same file:
+
+```yaml
+  online_only_regions: [hk, jp, us, eu]
+```
+
+Remove a region from that line and it stops being filtered. Add `sg` and
+Singapore starts being filtered too. Only `sg`, `hk`, `jp`, `us` and `eu` are
+allowed there; anything else stops the tool and sends you a message saying so.
+
 ## The web page
 
 Five tabs, one per region. Suspected price mistakes sit at the top. The page
@@ -63,6 +100,35 @@ At the bottom of each tab is one line per source with a coloured dot:
 
 One red dot is normal and not urgent; websites go down and come back. All of
 them red at once usually means the tool itself is stuck.
+
+## English titles
+
+Posts from Hong Kong, Japan, Germany and France arrive in Chinese, Japanese,
+German and French. The tool sends each headline to **MyMemory**, a free
+translation service that needs no sign-up and no payment card, and shows you
+the English version first. The original headline is always kept directly
+underneath, in smaller letters on the web page and in italics in the Telegram
+message, so nothing is lost when a translation comes out clumsy.
+
+Only the headline is translated, and only for show. What counts as a bargain is
+still decided on the original words, so a bad translation can never cost you an
+alert or invent one.
+
+If MyMemory is down or too busy, you simply see the original headline. The tool
+mentions it once in its log and carries on; nothing else changes.
+
+### The free daily allowance
+
+Without any setting-up, MyMemory translates about **5,000 characters a day**
+for free, which is roughly 150 headlines. After that it stops answering until
+the next day and you see original headlines for the rest of the day.
+
+You can raise that to **50,000 characters a day** by giving MyMemory an email
+address. This is optional. To do it, on GitHub open this project, **Settings**,
+then **Secrets and variables**, then **Actions**, press **New repository
+secret**, name it exactly `MYMEMORY_EMAIL`, and put any email address of yours
+in the value box. It is stored encrypted, it never appears on the web page, in
+a message or in the logs, and nothing else about the tool changes.
 
 ## "Source down" messages
 
@@ -101,8 +167,12 @@ Every part explained:
   public Telegram channel's web preview page. Almost always `feed`.
 - `url` - the address of the feed. Most blogs have one at their address
   followed by `/feed/`.
-- `language` - `en`, `de`, `fr`, `zh` or `ja`. This is only a note to yourself;
-  every price-mistake phrase in the file is checked against every source.
+- `language` - `en`, `de`, `fr`, `zh` or `ja`. Get this one right: it says
+  which language the headlines are written in, and the tool translates them
+  into English from that language (see "English titles" above). Say `ja` for a
+  site that writes in Japanese, `en` for one that writes in English, and so on.
+  It does not change what counts as a bargain: every price-mistake phrase in
+  the file is checked against every source whatever its language.
 - `require_sale_word` - add `require_sale_word: true` for a general news site
   that only sometimes writes about bargains, such as a tech news site. Posts
   from it are then ignored unless they mention a sale or a discount, or their
