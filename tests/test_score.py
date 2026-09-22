@@ -262,3 +262,74 @@ def test_the_rule_reads_both_lists_out_of_the_file() -> None:
     deal = titled("Camera at the kiosk", discount_pct=84.0)
     assert score(deal, deal.title, in_region("jp"), config, NOW).tier == "ignore"
     assert score(deal, deal.title, in_region("us"), config, NOW).tier == "alert"
+
+
+# ---------------------------------------------------------------------------
+# The in-store rule must not fire on a word that merely sits inside another.
+# English, German and French are written with spaces, so those words are
+# matched whole; Chinese and Japanese are not, so those stay a plain search.
+# ---------------------------------------------------------------------------
+
+
+KEPT = [
+    ("Buffet Bay 2-pack for $9 online", "us"),
+    ("Skin Store 70% off sitewide online", "us"),
+    ("Heat-insulated 1L flask 75% off online", "us"),
+    ("Walk-in shower enclosure 70% off, free delivery", "eu"),
+    ("クランチチョコ 大容量 セール 70%OFF 送料無料", "jp"),
+    ("全場網購 現場不適用", "hk"),
+]
+
+DROPPED = [
+    ("Sony headphones $89 in-store only", "us"),
+    ("Dyson V12 — in store", "us"),
+    ("堂食限定 $32", "hk"),
+    ("店舗限定セール", "jp"),
+    ("Nur in der Filiale: Bosch 29,99 €", "eu"),
+    ("Promo en magasin uniquement", "eu"),
+]
+
+
+@pytest.mark.parametrize(("title", "region"), KEPT)
+def test_an_online_deal_is_not_dropped_by_the_in_store_rule(title: str, region: str) -> None:
+    """Each of these is a real online bargain that an earlier, looser match threw away."""
+    deal = titled(title, discount_pct=84.0)
+    assert score(deal, deal.title, in_region(region), REAL_CONFIG, NOW).tier != "ignore"
+
+
+@pytest.mark.parametrize(("title", "region"), DROPPED)
+def test_a_shop_floor_deal_is_still_dropped(title: str, region: str) -> None:
+    deal = titled(title, discount_pct=84.0)
+    assert score(deal, deal.title, in_region(region), REAL_CONFIG, NOW).tier == "ignore"
+
+
+def test_the_over_broad_words_are_gone_from_the_shipped_file() -> None:
+    """Each of these matched far more ordinary posts than shop-floor ones."""
+    for word in ("buffet", "restaurant", "walk-in", "eat-in", "showroom",
+                 "ランチ", "ディナー", "現場", "外賣"):
+        assert word not in REAL_CONFIG.in_store_words, word
+
+
+def test_the_words_that_earn_their_place_are_still_there() -> None:
+    for word in ("in-store", "in store", "instore", "store only", "in-branch",
+                 "at the counter", "dine-in", "dine in",
+                 "堂食", "門市", "店舗", "店内", "filiale", "en magasin"):
+        assert word in REAL_CONFIG.in_store_words, word
+
+
+def test_a_spaced_word_matches_only_as_a_whole_word() -> None:
+    config = replace(REAL_CONFIG, in_store_words=("in store",),
+                     settings=replace(REAL_CONFIG.settings, online_only_regions=("us",)))
+    whole = titled("Kettle in store only", discount_pct=84.0)
+    assert score(whole, whole.title, in_region("us"), config, NOW).tier == "ignore"
+    inside = titled("Skin Store kettle deal", discount_pct=84.0)
+    assert score(inside, inside.title, in_region("us"), config, NOW).tier == "alert"
+
+
+def test_a_chinese_or_japanese_word_still_matches_inside_a_run_of_characters() -> None:
+    """Those languages are written without spaces, so a whole-word rule would never fire."""
+    config = replace(REAL_CONFIG, settings=replace(REAL_CONFIG.settings,
+                                                   online_only_regions=("hk", "jp")))
+    for title, region in (("堂食限定優惠", "hk"), ("期間限定の店内セール", "jp")):
+        deal = titled(title, discount_pct=84.0)
+        assert score(deal, deal.title, in_region(region), config, NOW).tier == "ignore", title

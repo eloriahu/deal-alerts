@@ -30,17 +30,19 @@ ignore_words:
   en: ["new customers", "first month", "second item", "2nd item"]
   de: ["neukunden", "lotto"]
 
+# Words that mean "you have to be standing in the shop". Only used in the
+# regions listed under online_only_regions. English, German and French words are
+# matched as whole words; Chinese and Japanese are matched anywhere in the text,
+# because those languages are written without spaces between words.
 in_store_words:
   en: ["in-store", "in store", "instore", "store only", "in-branch", "at the counter",
-       "dine-in", "dine in", "eat-in", "buffet", "restaurant", "walk-in", "showroom"]
+       "dine-in", "dine in"]
   zh: ["門市", "堂食", "分店", "餐廳", "自助餐",
-       "到店", "店內", "店内", "現場", "外賣",
-       "放題", "餐牌"]
+       "到店", "店內", "店内", "放題", "餐牌"]
   ja: ["店舗", "店頭", "実店舗", "来店", "店内",
-       "食べ放題", "レストラン", "ランチ",
-       "ディナー", "居酒屋", "イートイン"]
-  de: ["filiale", "vor ort", "im markt", "im laden", "restaurant", "buffet"]
-  fr: ["en magasin", "en boutique", "sur place", "restaurant", "buffet"]
+       "食べ放題", "レストラン", "イートイン"]
+  de: ["filiale", "vor ort", "im markt", "im laden"]
+  fr: ["en magasin", "en boutique", "sur place"]
 
 expired_words: ["expired", "abgelaufen", "expiré", "ausverkauft", "sold out",
                 "終了しました", "已完結", "已結束"]
