@@ -18,7 +18,7 @@ from workflow_support import (
 def test_scan_schedule_is_every_five_minutes() -> None:
     workflow = load_yaml(SCAN_PATH)
     trigger = trigger_section(workflow)
-    assert trigger["schedule"] == [{"cron": "*/5 * * * *"}]
+    assert trigger["schedule"] == [{"cron": "2-59/5 * * * *"}]
 
 
 def test_scan_has_workflow_dispatch_with_test_message_boolean() -> None:
