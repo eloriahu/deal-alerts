@@ -36,7 +36,8 @@ def score(deal: Deal, text: str, source: Source, config: Config, now: datetime) 
 
     Args:
         deal: The parsed deal.
-        text: Title plus summary, checked for glitch words and sale words.
+        text: Title plus summary, checked for sale words, ignore words and
+            in-store words.
         source: Where the deal came from (vote threshold, sale-word gate).
         config: Thresholds and word lists.
         now: Current time, timezone-aware UTC.
@@ -46,6 +47,15 @@ def score(deal: Deal, text: str, source: Source, config: Config, now: datetime) 
         return _IGNORE
 
     folded = text.casefold()
+    # Outside Singapore only a deal she can take from where she sits is any use,
+    # so a post naming a shop floor or a dining room is dropped. This comes
+    # before every other rule on purpose: a price error at a till, and a post the
+    # crowd is voting up, are both still trips she is not going to make.
+    if source.region in settings.online_only_regions and any(
+        word in folded for word in config.in_store_words
+    ):
+        return _IGNORE
+
     # Price-error words are read in the headline only. In a summary they are
     # almost always about something else ("the app has a glitch"), and a news
     # site's story about a configuration mistake is not a deal.

@@ -203,3 +203,62 @@ def test_an_ignore_word_leaves_the_price_error_and_vote_rules_alone() -> None:
 
     hot = titled("Lotto machine for new customers", discount_pct=95.0, heat=75)
     assert score(hot, hot.title, HOT_SOURCE, REAL_CONFIG, NOW).tier == "alert"
+
+
+# ---------------------------------------------------------------------------
+# Online-only regions. Outside Singapore a bargain she would have to walk into
+# a shop or sit down in a restaurant for is no use, so it is dropped outright.
+# ---------------------------------------------------------------------------
+
+
+def in_region(region: str) -> Source:
+    """The standard source, moved to another region."""
+    return replace(SOURCE, region=region)
+
+
+def test_an_in_store_deal_outside_singapore_is_dropped() -> None:
+    deal = titled("Sony WH-1000XM6 S$89 in-store only", discount_pct=84.0)
+    assert score(deal, deal.title, in_region("us"), REAL_CONFIG, NOW).tier == "ignore"
+
+
+def test_the_same_in_store_deal_in_singapore_is_kept() -> None:
+    """Singapore is the one region she can walk into, so it is never filtered."""
+    deal = titled("Sony WH-1000XM6 S$89 in-store only", discount_pct=84.0)
+    assert score(deal, deal.title, in_region("sg"), REAL_CONFIG, NOW).tier == "alert"
+
+
+def test_a_hong_kong_dine_in_deal_is_dropped() -> None:
+    deal = titled("大家樂：豬扒撈公仔麵 $32 堂食", discount_pct=84.0)
+    assert score(deal, deal.title, in_region("hk"), REAL_CONFIG, NOW).tier == "ignore"
+
+
+def test_an_ordinary_japanese_deal_is_left_alone_by_the_rule() -> None:
+    deal = titled("【715円】ケーブルクリップ セール", discount_pct=84.0)
+    assert score(deal, deal.title, in_region("jp"), REAL_CONFIG, NOW).tier == "alert"
+
+
+def test_a_branch_only_european_deal_is_dropped_however_big_the_cut() -> None:
+    deal = titled("Filiale: Bosch Akkuschrauber 29,99 € statt 129,99 €", discount_pct=76.7)
+    assert score(deal, deal.title, in_region("eu"), REAL_CONFIG, NOW).tier == "ignore"
+
+
+def test_the_rule_beats_a_price_error_headline() -> None:
+    """A price error she could only take at a till is still a price error she cannot take."""
+    deal = titled("PRICE ERROR Dyson V12 $99 in-store", discount_pct=None)
+    assert score(deal, deal.title, in_region("us"), REAL_CONFIG, NOW).tier == "ignore"
+
+
+def test_the_rule_reads_the_summary_too_and_beats_the_vote_rule() -> None:
+    hot = titled("Dyson V12 at $99", heat=75, discount_pct=None)
+    assert score(hot, hot.title, HOT_SOURCE, REAL_CONFIG, NOW).tier == "alert"
+    assert score(hot, f"{hot.title} dine-in customers only", HOT_SOURCE,
+                 REAL_CONFIG, NOW).tier == "ignore"
+
+
+def test_the_rule_reads_both_lists_out_of_the_file() -> None:
+    """Neither the words nor the regions are hard-coded in the scoring code."""
+    config = replace(REAL_CONFIG, in_store_words=("kiosk",),
+                     settings=replace(REAL_CONFIG.settings, online_only_regions=("jp",)))
+    deal = titled("Camera at the kiosk", discount_pct=84.0)
+    assert score(deal, deal.title, in_region("jp"), config, NOW).tier == "ignore"
+    assert score(deal, deal.title, in_region("us"), config, NOW).tier == "alert"

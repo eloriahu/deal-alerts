@@ -11,6 +11,7 @@ settings:
   max_consecutive_send_failures: 3
   fetch_budget_seconds: 300
   max_alert_age_hours: 24
+  online_only_regions: [hk, jp, us, eu]
 
 glitch_words:
   en: ["price error", "pricing error", "price glitch", "pricing glitch", "misprice", "mispriced",
@@ -27,6 +28,18 @@ sale_words:
 ignore_words:
   en: ["new customers", "first month", "second item", "2nd item"]
   de: ["neukunden", "lotto"]
+
+in_store_words:
+  en: ["in-store", "in store", "instore", "store only", "in-branch", "at the counter",
+       "dine-in", "dine in", "eat-in", "buffet", "restaurant", "walk-in", "showroom"]
+  zh: ["門市", "堂食", "分店", "餐廳", "自助餐",
+       "到店", "店內", "店内", "現場", "外賣",
+       "放題", "餐牌"]
+  ja: ["店舗", "店頭", "実店舗", "来店", "店内",
+       "食べ放題", "レストラン", "ランチ",
+       "ディナー", "居酒屋", "イートイン"]
+  de: ["filiale", "vor ort", "im markt", "im laden", "restaurant", "buffet"]
+  fr: ["en magasin", "en boutique", "sur place", "restaurant", "buffet"]
 
 expired_words: ["expired", "abgelaufen", "expiré", "ausverkauft", "sold out",
                 "終了しました", "已完結", "已結束"]
