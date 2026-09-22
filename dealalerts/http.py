@@ -65,13 +65,13 @@ class PoliteClient:
             raise FetchError(f"{host}: HTTP {response.status_code}")
         return response
 
-    def get(self, url: str) -> bytes:
-        """Fetch a page or feed. Raises FetchError on any failure."""
-        return self._call("get", url).content
+    def _decode_json(self, response: Any, url: str) -> Dict[str, Any]:
+        """Decode one JSON reply. Raises FetchError naming only the host.
 
-    def post_json(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Send JSON, return the JSON reply. Raises FetchError on any failure."""
-        response = self._call("post", url, json=payload)
+        Shared by get_json and post_json: both carry secrets in the address (the
+        bot key for Telegram, the optional email for the translation service), so
+        both need the same rule that only the host may ever appear in an error.
+        """
         host = urlsplit(url).netloc
         failure: Optional[str] = None
         decoded: Any = None
@@ -86,3 +86,15 @@ class PoliteClient:
         if not isinstance(decoded, dict):
             raise FetchError(f"{host}: invalid JSON reply")
         return decoded
+
+    def get(self, url: str) -> bytes:
+        """Fetch a page or feed. Raises FetchError on any failure."""
+        return self._call("get", url).content
+
+    def get_json(self, url: str) -> Dict[str, Any]:
+        """Fetch an address that answers with JSON. Raises FetchError on any failure."""
+        return self._decode_json(self._call("get", url), url)
+
+    def post_json(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Send JSON, return the JSON reply. Raises FetchError on any failure."""
+        return self._decode_json(self._call("post", url, json=payload), url)

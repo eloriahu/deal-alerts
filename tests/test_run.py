@@ -9,6 +9,7 @@ import pytest
 import dealalerts.notify as notify_module
 import run as run_module
 from dealalerts.pipeline import RunReport
+from dealalerts.translate import Translator
 
 SOURCES_PATH = Path(__file__).resolve().parent.parent / "sources.yaml"
 
@@ -256,3 +257,50 @@ def test_the_closing_line_says_how_many_sources_were_not_reached(
     assert exit_code == 0
     log_text = "\n".join(record.getMessage() for record in caplog.records)
     assert "4 sources not reached in time" in log_text
+
+
+def test_run_hands_the_pipeline_a_translator_built_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """MYMEMORY_EMAIL is optional and raises the free daily limit. It must reach the
+    translator and must never appear in a log line. A dry run translates too."""
+    captured: List[Any] = []
+
+    def fake_run_once(*_args: Any, **kwargs: Any) -> Any:
+        captured.append(kwargs.get("translator"))
+        return RunReport(fetched=0, new=0, skipped=0, alerts_sent=0, failures=())
+
+    monkeypatch.setattr(run_module, "run_once", fake_run_once)
+    monkeypatch.setenv("MYMEMORY_EMAIL", "owner@example.test")
+    argv = ["--config", str(SOURCES_PATH), "--state", str(tmp_path / "state.json"),
+            "--out", str(tmp_path / "public"), "--dry-run"]
+
+    caplog.set_level(logging.INFO)
+    assert run_module.main(argv) == 0
+
+    translator = captured[0]
+    assert isinstance(translator, Translator)
+    # Reaching into the one private field that proves the wiring: nothing public
+    # exposes the email, deliberately.
+    assert translator._email == "owner@example.test"
+    log_text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "owner@example.test" not in log_text
+
+
+def test_a_missing_translation_email_is_simply_absent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Without the optional secret the anonymous daily limit applies; nothing breaks."""
+    captured: List[Any] = []
+
+    def fake_run_once(*_args: Any, **kwargs: Any) -> Any:
+        captured.append(kwargs.get("translator"))
+        return RunReport(fetched=0, new=0, skipped=0, alerts_sent=0, failures=())
+
+    monkeypatch.setattr(run_module, "run_once", fake_run_once)
+    monkeypatch.delenv("MYMEMORY_EMAIL", raising=False)
+    assert run_module.main([
+        "--config", str(SOURCES_PATH), "--state", str(tmp_path / "state.json"),
+        "--out", str(tmp_path / "public"), "--dry-run",
+    ]) == 0
+    assert captured[0]._email is None

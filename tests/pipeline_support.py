@@ -5,8 +5,9 @@ recording deals, `test_pipeline_alerts.py` covers sending alerts and
 source-down notes, and both build their state from the helpers here.
 """
 
+from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from dealalerts.config import Config, Settings
 from dealalerts.http import FetchError
@@ -22,6 +23,48 @@ CONFIG = Config(
     glitch_words=("price error",), sale_words=(), expired_words=("expired",),
 )
 ENV = {"TELEGRAM_BOT_TOKEN": "TOKEN", "TG_CHAT_SG": "-1001", "TG_CHAT_US": "-1002"}
+
+
+# A second config for the translation tests: one English source and one
+# Japanese one, so "translate everything that is not English" can be shown to
+# hold both ways round in one run.
+JP = Source(name="JP Feed", region="jp", kind="feed", url="https://jp.test/feed", language="ja")
+TRANSLATING_CONFIG = replace(
+    CONFIG, sources=(SG, JP), glitch_words=("price error", "価格ミス"),
+)
+TRANSLATING_ENV = dict(ENV, TG_CHAT_JP="-1003")
+
+
+class FakeTranslator:
+    """Stands in for Translator. Answers every ask with a marked English headline."""
+
+    def __init__(self, answers: Optional[Dict[str, Optional[str]]] = None) -> None:
+        self.asked: List[Tuple[str, str]] = []
+        self._answers = answers or {}
+
+    def english_title(self, text: str, language: str) -> Optional[str]:
+        self.asked.append((text, language))
+        return self._answers.get(text, f"EN: {text}")
+
+
+class FakeTranslateClient:
+    """Stands in for PoliteClient for translation only. Answers each ask in turn."""
+
+    def __init__(self, replies: List[Any]) -> None:
+        self.replies = list(replies)
+        self.urls: List[str] = []
+
+    def get_json(self, url: str) -> Dict[str, Any]:
+        self.urls.append(url)
+        reply = self.replies.pop(0) if self.replies else {}
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+def english(text: str) -> Dict[str, Any]:
+    """One reply in MyMemory's shape."""
+    return {"responseStatus": 200, "responseData": {"translatedText": text}}
 
 
 def post(number: int, title: str) -> RawPost:
@@ -89,6 +132,13 @@ def run(state: State, client: FakeClient, feeds: Dict[str, Any], now: datetime =
     """One pipeline run over `feeds`, with no real sleeping and no network."""
     return run_once(CONFIG, state, client, ENV, now, dry_run,
                     fetch_fn=make_fetch(feeds), sleep=lambda _: None)
+
+
+def translating_run(state: State, client: FakeClient, feeds: Dict[str, Any],
+                    translator: Any, now: datetime = NOW) -> RunReport:
+    """One run over TRANSLATING_CONFIG with a translator attached."""
+    return run_once(TRANSLATING_CONFIG, state, client, TRANSLATING_ENV, now, False,
+                    fetch_fn=make_fetch(feeds), sleep=lambda _: None, translator=translator)
 
 
 def seed_pending(state: State, client: FakeClient, count: int) -> None:

@@ -15,6 +15,7 @@ from dealalerts.notify import NotifyError, chat_id_for, send_message
 from dealalerts.pipeline import run_once
 from dealalerts.site import build_site
 from dealalerts.store import State
+from dealalerts.translate import Translator
 
 logger = logging.getLogger("dealalerts.run")
 
@@ -137,8 +138,12 @@ def _scan(args: argparse.Namespace, config: Config, client: PoliteClient, state:
     # Save as the run goes, so an alert that was delivered is never sent twice
     # because the run died before its final save. A dry run saves nothing.
     checkpoint = None if args.dry_run else (lambda: state.save(state_path))
+    # MYMEMORY_EMAIL is optional: with it the free daily translation allowance is
+    # ten times larger. It is a secret, so it is read here and never logged.
+    translator = Translator(client, os.environ.get("MYMEMORY_EMAIL") or None,
+                            config.settings.max_translations_per_run)
     report = run_once(config, state, client, os.environ, now, args.dry_run,
-                      checkpoint=checkpoint)
+                      checkpoint=checkpoint, translator=translator)
     state.prune(now, config.settings.seen_days, config.settings.dashboard_days)
     if not args.dry_run:
         state.save(state_path)

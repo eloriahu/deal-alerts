@@ -40,6 +40,9 @@ class Settings:
     max_consecutive_send_failures: int = 3
     fetch_budget_seconds: float = 300
     max_alert_age_hours: int = 24
+    # How many headlines one run may send for translation. The free allowance is
+    # a few thousand characters a day, shared by every run.
+    max_translations_per_run: int = 40
     # Regions where a deal that can only be taken in a shop or a restaurant is
     # no use, so it is dropped. Singapore is left out: that is where she is.
     online_only_regions: Tuple[str, ...] = ()

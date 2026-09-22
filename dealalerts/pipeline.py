@@ -2,7 +2,7 @@
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Callable, List, Mapping, Optional, Tuple
 
@@ -15,6 +15,7 @@ from dealalerts.parse import deal_id, parse_fields
 from dealalerts.score import score
 from dealalerts.store import State
 from dealalerts.times import parse_utc
+from dealalerts.translate import Translator
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,28 @@ def to_deal(post: RawPost, source: Source, now: datetime, identifier: str) -> De
         discount_pct=fields.discount_pct, heat=post.heat, posted_at=post.posted_at,
         first_seen=now.isoformat(),
     )
+
+
+def _translated(deal: Deal, source: Source, translator: Optional[Translator]) -> Deal:
+    """Attach an English headline to a deal from a source that is not in English.
+
+    Never raises and never holds anything up: a headline that cannot be
+    translated simply stays in its own language. The translator is injected, so
+    it could be anything; only an exception's class name is ever logged, because
+    its text could quote the address that carries the email.
+    """
+    if translator is None or source.language == "en":
+        return deal
+    english: Optional[str] = None
+    failure: Optional[str] = None
+    try:
+        english = translator.english_title(deal.title, source.language)
+    except Exception as error:  # noqa: BLE001 - deliberate: see docstring
+        failure = type(error).__name__
+    if failure is not None:
+        logger.warning("A title could not be translated (%s); the original is kept", failure)
+        return deal
+    return deal if english is None else replace(deal, title_en=english)
 
 
 def _deliver(client: PoliteClient, env: Mapping[str, str], region: str, text: str,
@@ -150,6 +173,7 @@ def run_once(
     sleep: Callable[[float], None] = time.sleep,
     checkpoint: Optional[Callable[[], None]] = None,
     clock: Callable[[], float] = time.monotonic,
+    translator: Optional[Translator] = None,
 ) -> RunReport:
     """Read all sources, record new deals, send pending alerts and source-down notes.
 
@@ -157,6 +181,8 @@ def run_once(
         checkpoint: Called after the fetch loop and after every alert that was
             actually delivered, so work already done survives a later crash.
         clock: Elapsed-time source for the fetch budget, injected for tests.
+        translator: Optional English-headline lookup. None means every title is
+            kept in its own language.
     """
     settings = config.settings
     fetched = new = skipped = sources_skipped = 0
@@ -237,6 +263,11 @@ def run_once(
             try:
                 deal = to_deal(post, source, now, identifier)
                 verdict = score(deal, f"{post.title} {post.summary}", source, config, now)
+                if verdict.tier != "ignore":
+                    # Only what is going to be shown is worth translating, and
+                    # the lookup has its own guard, so it can neither raise out
+                    # of here nor cost the deal.
+                    deal = _translated(deal, source, translator)
             except Exception as error:  # noqa: BLE001 - deliberate: see comment above
                 # The id is already marked seen (above), so this post will not be
                 # retried and cannot crash the run again on a later pass.

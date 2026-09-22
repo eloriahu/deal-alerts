@@ -74,9 +74,18 @@ def _price_line(deal: Mapping[str, Any]) -> Optional[str]:
 
 
 def format_message(deal: Mapping[str, Any], now: datetime) -> str:
-    """Build the alert text in Telegram's HTML style. Lines with no data are left out."""
+    """Build the alert text in Telegram's HTML style. Lines with no data are left out.
+
+    The headline is in English when the run managed to translate it, with the
+    original kept on the next line so nothing is lost in the translation. A
+    record saved before English headlines existed has no such key at all.
+    """
     escape = lambda text: html.escape(str(text), quote=False)  # noqa: E731
-    lines = [f"<b>{_HEADLINES.get(deal.get('kind', ''), 'DEAL')}</b>  {escape(deal['title'])}"]
+    english = deal.get("title_en")
+    headline = english or deal["title"]
+    lines = [f"<b>{_HEADLINES.get(deal.get('kind', ''), 'DEAL')}</b>  {escape(headline)}"]
+    if english and english != deal["title"]:
+        lines.append(f"<i>{escape(deal['title'])}</i>")
     price_line = _price_line(deal)
     if price_line:
         lines.append(escape(price_line))

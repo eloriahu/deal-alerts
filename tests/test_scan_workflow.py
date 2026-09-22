@@ -65,6 +65,14 @@ def test_only_the_two_steps_that_run_run_py_carry_the_secrets() -> None:
     assert elsewhere == []
 
 
+def test_the_two_run_steps_carry_exactly_eight_secrets() -> None:
+    """Pinning the count as well as the names: a secret quietly dropped from one of
+    the steps would otherwise only show as alerts, or English titles, going missing."""
+    assert len(EXPECTED_SCAN_ENV_VARS) == 8
+    assert len(set(EXPECTED_SCAN_ENV_VARS)) == 8
+    assert "MYMEMORY_EMAIL" in EXPECTED_SCAN_ENV_VARS
+
+
 def test_scan_runs_run_py_and_a_test_message_variant() -> None:
     workflow = load_yaml(SCAN_PATH)
     steps = workflow["jobs"]["scan"]["steps"]

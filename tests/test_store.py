@@ -1,4 +1,4 @@
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict
@@ -263,3 +263,20 @@ def test_rearming_clears_the_once_a_day_limit_as_well() -> None:
     state.rearm_failure_note("S")
     assert state.record_failure("S", "HTTP 403", NOW, note_after=1) is True
     assert state.health["S"].get("noted_at") is not None
+
+
+def test_the_round_trip_keeps_the_english_title(tmp_path: Path) -> None:
+    path = tmp_path / "data" / "state.json"
+    state = State()
+    state.add_deal(replace(make_deal("a"), title_en="English headline"), GLITCH)
+    state.save(path)
+    assert State.load(path).deals[0]["title_en"] == "English headline"
+
+
+def test_a_record_saved_before_english_titles_is_still_kept() -> None:
+    """data/state.json already holds records with no such key; they must survive."""
+    record = valid_record("old")
+    del record["title_en"]
+    state = State({"deals": [record]})
+    assert [deal["id"] for deal in state.deals] == ["old"]
+    assert state.deals[0].get("title_en") is None

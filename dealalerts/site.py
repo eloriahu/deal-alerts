@@ -45,6 +45,7 @@ section h2 { font-size:1.1rem; margin:24px 0 8px; }
 .badge { color:var(--hot); font-size:.75rem; font-weight:700; letter-spacing:.04em; }
 .price { font-variant-numeric:tabular-nums; margin-top:2px; }
 .meta { color:var(--soft); font-size:.85rem; margin-top:2px; }
+.orig { color:var(--soft); font-size:.85rem; margin-top:2px; overflow-wrap:anywhere; }
 .empty { color:var(--soft); }
 .health { margin-top:12px; font-size:.85rem; color:var(--soft); }
 .source { display:block; }
@@ -108,10 +109,18 @@ def _deal_label(deal: Any) -> str:
 
 
 def _deal_html(deal: Mapping[str, Any]) -> str:
-    """Render one deal record as an HTML card, escaping all feed-sourced text."""
-    title = html.escape(deal["title"])
+    """Render one deal record as an HTML card, escaping all feed-sourced text.
+
+    The link text is the English headline when the run managed to translate one,
+    with the original on a muted line underneath. A record saved before English
+    headlines existed has no such key, and reads exactly as it always did.
+    """
+    english = deal.get("title_en")
+    title = html.escape(english or deal["title"])
     link = _safe_link(deal["link"])
     heading = f'<a href="{html.escape(link)}" rel="noopener noreferrer">{title}</a>' if link else title
+    original = (f'<div class="orig">{html.escape(deal["title"])}</div>'
+                if english and english != deal["title"] else "")
     glitch = deal.get("kind") == "glitch"
     badge = '<div class="badge">SUSPECTED PRICE ERROR</div>' if glitch else ""
     price_bits: List[str] = []
@@ -126,7 +135,7 @@ def _deal_html(deal: Mapping[str, Any]) -> str:
     meta_bits.append(deal["source"])
     meta = html.escape(" · ".join(meta_bits))
     return (
-        f'<div class="deal{" glitch" if glitch else ""}">{badge}{heading}{price}'
+        f'<div class="deal{" glitch" if glitch else ""}">{badge}{heading}{original}{price}'
         f'<div class="meta">{meta} · {_stamp(deal["first_seen"])}</div></div>'
     )
 
