@@ -54,10 +54,10 @@ Each deal buzzes once, and only once, even if several sites post it.
 ## Only online deals outside Singapore
 
 Outside Singapore you cannot walk into the shop, so a bargain you could only
-take at a till or a dinner table is no use to you. In **Hong Kong, Japan, the
-US and Europe** the tool therefore throws away any post whose headline or
-description mentions a shop floor or a dining room: "in-store", "dine-in",
-"restaurant", 堂食, 店舗, "Filiale", "en magasin" and so on.
+take at a till is no use to you. In **Hong Kong, Japan, the US and Europe** the
+tool therefore throws away any post whose headline or description says you have
+to be standing in the shop: "in-store", "dine-in", 堂食, 店舗, "Filiale",
+"en magasin" and so on.
 
 This beats every other rule. Even a post that says "price error", and even one
 with 90% off, is dropped if it also says "in-store only".
@@ -65,15 +65,26 @@ with 90% off, is dropped if it also says "in-store only".
 **Singapore is never filtered this way.** That is where you are, so a shop deal
 there still reaches you.
 
+English, German and French words only count as whole words, so "in store" does
+not fire on "Skin Store" and "dine-in" does not fire on a longer word that
+happens to contain it. Chinese and Japanese are written without spaces between
+words, so those are found anywhere in the text.
+
 The words live in `sources.yaml` under `in_store_words`, grouped by language.
-To stop dropping posts that mention buffets, delete `"buffet"` from the list
-it appears in. To start dropping posts about click-and-collect, add it:
+This is the whole English line as it ships:
 
 ```yaml
-  en: ["in-store", "in store", "instore", "store only", "click and collect"]
+  en: ["in-store", "in store", "instore", "store only", "in-branch", "at the counter",
+       "dine-in", "dine in"]
 ```
 
-Keep the quotation marks and the commas exactly as they are.
+To add one of your own, put it at the end of that line and keep all the others.
+To stop dropping a kind of post, delete just that one phrase. Keep the quotation
+marks and the commas exactly as they are.
+
+Choose phrases that can only mean a shop floor. Single broad words such as
+"restaurant", "buffet" or "showroom" were tried and removed: they threw away
+ordinary online bargains on kitchenware and shower screens.
 
 The regions this applies to are listed near the top of the same file:
 
@@ -120,15 +131,26 @@ mentions it once in its log and carries on; nothing else changes.
 ### The free daily allowance
 
 Without any setting-up, MyMemory translates about **5,000 characters a day**
-for free, which is roughly 150 headlines. After that it stops answering until
-the next day and you see original headlines for the rest of the day.
+for free, which is about 30 to 150 headlines depending on how long they are.
+After that it stops answering until the next day and you see original headlines
+for the rest of the day.
 
-You can raise that to **50,000 characters a day** by giving MyMemory an email
-address. This is optional. To do it, on GitHub open this project, **Settings**,
-then **Secrets and variables**, then **Actions**, press **New repository
-secret**, name it exactly `MYMEMORY_EMAIL`, and put any email address of yours
-in the value box. It is stored encrypted, it never appears on the web page, in
-a message or in the logs, and nothing else about the tool changes.
+**Setting this up is recommended, not optional.** Without an email address of
+your own, that free allowance is shared with everyone else using GitHub's
+servers, so it is often already used up by the time your check runs and your
+titles stay untranslated. Giving MyMemory an address of your own raises it to
+**50,000 characters a day**, for you alone.
+
+To do it, on GitHub open this project, **Settings**, then **Secrets and
+variables**, then **Actions**, press **New repository secret**, name it exactly
+`MYMEMORY_EMAIL`, and put any email address you choose in the value box. It is
+stored as a secret: it never appears on the web page, in a message, in the logs
+or anywhere in the project. Nothing else about the tool changes.
+
+If a check cannot reach MyMemory, it tries again and only gives up for that one
+check after two failures in a row. Titles it could not translate are picked up
+by a later check, so a deal on the page usually gets its English title within a
+few minutes even when the service was briefly down.
 
 ## "Source down" messages
 
@@ -219,6 +241,15 @@ Near the top of the file:
 That is the percentage that buzzes your phone. Raise it to 80 for fewer
 messages, lower it to 60 for more. `dashboard_discount: 40` is the percentage
 from which a deal appears on the web page, and works the same way.
+
+Two more settings sit in the same block and control translation:
+
+- `max_translations_per_run: 40` - how many headlines one check may translate.
+  Lower it to use less of the daily allowance; raise it if titles are being
+  missed and you have set up `MYMEMORY_EMAIL`.
+- `retranslate_per_run: 5` - how many deals already on the page get a second
+  try at an English title each check, for the ones stored while MyMemory was
+  unreachable.
 
 ## When something looks wrong
 

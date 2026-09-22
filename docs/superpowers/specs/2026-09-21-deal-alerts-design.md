@@ -31,21 +31,22 @@ The list that ships is in `sources.yaml`, and that file is the only source of
 truth. Each entry carries its region; region is fixed at the source and never
 guessed from the text. As shipped:
 
-- Singapore: SingPromos, MoneyDigest, MileLion, r/singaporedeals.
-- Hong Kong: Jetso Club, Jetso Today, GoTrip (Hong Kong's main deal sites;
-  "jetso" is the local word for a bargain). Posts are in Traditional Chinese.
+- Singapore: SingPromos, MoneyDigest, MileLion.
+- Hong Kong: Jetso Club, GoTrip, FlyAgain (Hong Kong's main deal sites; "jetso"
+  is the local word for a bargain). Posts are in Traditional Chinese.
 - Japan: the Gekiyasu deal blog, Traicy for airline fare sales, PC Watch.
   Posts are in Japanese.
-- US: the Slickdeals front page and popular feeds, r/deals, r/buildapcsales,
-  The Flight Deal.
+- US: the Slickdeals front page and popular feeds, The Flight Deal.
 - Europe: DealDoktor and Mein-Deal (Germany), Travel-Dealz for error fares,
-  r/UKDeals.
+  HotUKDeals, mydealz, Dealabs.
 
 Everything else named during design stays a candidate, tested from GitHub's
 servers before it is added: public deal Telegram channels through their web
-preview pages, ITmedia, Secret Flying, r/HongKong, Japanese deal subreddits,
-and HotUKDeals, mydealz and Dealabs, which all refuse automated readers today.
-A source that blocks GitHub's addresses is replaced, not left failing quietly.
+preview pages, ITmedia, Secret Flying, r/HongKong and Japanese deal subreddits.
+Reddit feeds are out: Reddit rate-limits GitHub's addresses, so a Reddit source
+fails far more often than it works. HotUKDeals, mydealz and Dealabs refuse a
+home PC but answer GitHub's servers, which is why they ship. A source that
+blocks GitHub's addresses is replaced, not left failing quietly.
 
 ## Parts
 
@@ -54,7 +55,7 @@ Each part has one job and can be tested on its own.
 | Part | Job | Input | Output |
 |---|---|---|---|
 | `sources.yaml` | List of sources with name, region, kind, address | none | config |
-| `fetchers/` | One reader per source kind (feed, Reddit, Telegram preview). Fetch and turn posts into a common `Deal` record | source entry | list of `Deal` |
+| `fetchers/` | One reader per source kind (feed, Telegram preview). Fetch and turn posts into a common `Deal` record | source entry | list of `Deal` |
 | `parse.py` | Pull current price, usual price, discount %, shop name out of a post title and body | text | fields on `Deal` |
 | `score.py` | Decide the tier: `alert`, `dashboard`, or `ignore`, with the reasons | `Deal` | tier + reasons |
 | `store.py` | Remember which deals were seen and alerted, and source health. One file, `data/state.json`, committed back by the run | deals | state |
@@ -122,9 +123,11 @@ the share you pay). Titles are shown in English with the original underneath,
 translated by MyMemory (free, no sign-up) from the source's declared language;
 the price, discount and shop lines of the alert are always in English. The
 translation is display only and never reaches scoring, so a translation that is
-wrong, late or missing cannot change what alerts. A source whose translation
-fails once is not retried for the rest of that run, and one run asks at most
-`max_translations_per_run` times.
+wrong, late or missing cannot change what alerts. If translation fails twice in
+a row, or the daily allowance is used up, no further titles are translated for
+the rest of that run; later runs fill in missing English titles for deals still
+on the page. One run asks at most `max_translations_per_run` times in total,
+including those fill-ins, of which at most `retranslate_per_run` are retries.
 
 Each deal alerts once. It is remembered by its region-scoped id for 30 days
 after it was last seen, so a post that sits in a feed for months never alerts
